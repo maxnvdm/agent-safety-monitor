@@ -27,3 +27,6 @@ dist/
 
 # Claude Code per-user settings (project settings.json is committed)
 .claude/settings.local.json
+
+# varlock — encrypted local secrets (never commit)
+.env.local

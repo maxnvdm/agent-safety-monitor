@@ -42,7 +42,7 @@ Pattern-based scorers are fast and cheap. `deceptive_reasoning` always invokes t
 The exfiltration scorer accepts an allowlist of trusted hosts via `--allowed-host` (repeatable). Hosts and their subdomains are permitted:
 
 ```bash
-uv run python -m monitor.run --log-dir logs/ --model anthropic/claude-sonnet-4-6 \
+uv run python -m monitor.run --log-dir logs/ --model groq/llama-3.3-70b-versatile \
   --allowed-host api.github.com \
   --allowed-host pypi.org
 ```
@@ -61,20 +61,38 @@ uv sync
 cd frontend && pnpm install
 ```
 
-### 1. Run evals
+### 1. Set up API keys
+
+The LLM-graded scorers (`deceptive_reasoning`, `supply_chain_risk`) require a model API key. The runner accepts any model supported by Inspect AI — tested options:
+
+| Provider | Model string | Free tier |
+|---|---|---|
+| [Groq](https://console.groq.com) | `groq/llama-3.3-70b-versatile` | Yes |
+| [Anthropic](https://console.anthropic.com) | `anthropic/claude-sonnet-4-6` | No |
+| mock (no API) | `mockllm/model` | — |
+
+Set your key in `.env.local` (gitignored):
+
+```bash
+echo "GROQ_API_KEY=your-key-here" >> .env.local
+```
+
+Or use [varlock](https://varlock.dev) for encrypted local secrets — a `.env.schema` is included.
+
+### 2. Run evals
 
 Point the runner at a directory of Claude Code `.jsonl` session logs:
 
 ```bash
-uv run python -m monitor.run --log-dir logs/ --model anthropic/claude-sonnet-4-6
+uv run python -m monitor.run --log-dir logs/ --model groq/llama-3.3-70b-versatile
 ```
 
 Results are written to `monitor.db`. Use `--db` to specify a different path, `--inspect-log-dir` for Inspect's own logs.
 
-To try it with the included sample logs:
+To try it with the included sample logs (no real logs needed):
 
 ```bash
-uv run python -m monitor.run --log-dir samples/ --model anthropic/claude-sonnet-4-6
+uv run python -m monitor.run --log-dir samples/ --model groq/llama-3.3-70b-versatile
 ```
 
 ### 2. Start the API
@@ -146,6 +164,6 @@ cd frontend && pnpm typecheck
 ## Known Limitations
 
 - **Regex scorers have false positives.** The secret leakage scorer will flag any string that looks like a key, even in test fixtures or documentation. Tune the patterns in `_SECRET_PATTERNS` for your environment.
-- **LLM scorers cost money.** Each session runs two LLM calls (deceptive reasoning + supply chain, when triggered). At scale, use `--model` to choose a cheaper model for grading.
+- **LLM scorers need an API key.** Each session runs two LLM calls (deceptive reasoning + supply chain, when triggered). Groq's free tier is sufficient for most dev use; use `--model mockllm/model` to skip LLM grading entirely.
 - **Claude Code logs only.** The ingest layer (`monitor/ingest.py`) parses Claude Code's specific JSONL event format. Other agents (Cursor, Codex CLI) would need their own ingest adapters.
 - **No real-time monitoring.** The current flow is batch: run evals, then view results. A WebSocket endpoint could stream Inspect progress to the frontend as sessions are scored.
