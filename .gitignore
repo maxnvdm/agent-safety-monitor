@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv
+uv.lock
+
+# Project data — never commit real user logs or scoring DBs
+logs/
+inspect_logs/
+monitor.db
+monitor.db-*
+
+# Node / frontend
+node_modules/
+dist/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code per-user settings (project settings.json is committed)
+.claude/settings.local.json
