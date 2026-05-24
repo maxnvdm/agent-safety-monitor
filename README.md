@@ -80,10 +80,10 @@ uv run python -m monitor.run --log-dir samples/ --model anthropic/claude-sonnet-
 ### 2. Start the API
 
 ```bash
-uv run uvicorn api.main:app --reload
+uv run uvicorn api.main:app --reload --port 8070
 ```
 
-The API runs at `http://localhost:8000`. Set `MONITOR_DB` to point at a non-default database path.
+The API runs at `http://localhost:8070`. Set `MONITOR_DB` to point at a non-default database path.
 
 ### 3. Start the frontend
 

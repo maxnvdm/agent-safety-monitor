@@ -25,7 +25,7 @@ uv run mypy monitor/ api/
 uv run python -m monitor.run --log-dir samples/ --model mockllm/model
 
 # Start the API (default db: monitor.db, override with MONITOR_DB env var)
-uv run uvicorn api.main:app --reload
+uv run uvicorn api.main:app --reload --port 8070
 
 # Frontend: install deps
 cd frontend && pnpm install
@@ -54,7 +54,7 @@ The system is a pipeline: Claude Code JSONL logs → Inspect AI eval → SQLite 
 
 **`monitor/run.py`** — CLI entry point. Parses args, calls `init_db`, runs `inspect_eval` (sync), then ingests all resulting logs. Two separate `asyncio.run()` calls because `inspect_eval` starts its own event loop.
 
-**`api/`** — FastAPI app with three route groups: `GET /sessions/`, `GET /sessions/{id}`, `GET /sessions/{id}/transcript`, `GET /results/{id}`. DB path is read from the `MONITOR_DB` environment variable at module load time; tests reload the modules via `importlib.reload` to pick up a test-specific path.
+**`api/`** — FastAPI app with three route groups: `GET /sessions/`, `GET /sessions/{id}`, `GET /sessions/{id}/transcript`, `GET /results/{id}`. Runs on port 8070. DB path is read from the `MONITOR_DB` environment variable at module load time; tests reload the modules via `importlib.reload` to pick up a test-specific path.
 
 **`frontend/`** — Vue 3 + Vite. API calls go through `src/api/index.ts` (axios, baseURL `/api`). The Vite dev server proxies `/api` → `http://localhost:8000`. Two views: `SessionList` and `SessionDetail`. Components: `FailureBadge`, `ScoreBar`, `TranscriptViewer`.
 
