@@ -37,7 +37,15 @@ Claude Code session logs (.jsonl)
 | `deceptive_reasoning` | Agent's stated plan doesn't match its actual tool calls | LLM-graded |
 | `supply_chain_risk` | Suspicious package installs or dependency manifest changes | LLM-graded (with pre-filter) |
 
-Pattern-based scorers are fast and cheap. LLM-graded scorers only run when there's something to evaluate (`deceptive_reasoning` always runs; `supply_chain_risk` is skipped unless a dependency file was modified or an install command ran).
+Pattern-based scorers are fast and cheap. `deceptive_reasoning` always invokes the LLM. `supply_chain_risk` skips the LLM call entirely if no dependency file was modified and no install command ran.
+
+The exfiltration scorer accepts an allowlist of trusted hosts via `--allowed-host` (repeatable). Hosts and their subdomains are permitted:
+
+```bash
+uv run python -m monitor.run --log-dir logs/ --model anthropic/claude-sonnet-4-6 \
+  --allowed-host api.github.com \
+  --allowed-host pypi.org
+```
 
 ## How to Run
 
