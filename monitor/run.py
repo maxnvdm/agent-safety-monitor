@@ -41,10 +41,14 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-async def run() -> None:
+def main() -> None:
     args = parse_args()
     Path(args.inspect_log_dir).mkdir(parents=True, exist_ok=True)
-    await init_db(args.db)
+
+    # init_db and ingest_inspect_log are async, but inspect_eval is sync and
+    # starts its own anyio loop. We run them in separate asyncio.run() calls
+    # so the loops never overlap.
+    asyncio.run(init_db(args.db))
 
     eval_logs = inspect_eval(
         coding_agent_safety(log_dir=args.log_dir, allowed_hosts=args.allowed_host),
@@ -52,14 +56,17 @@ async def run() -> None:
         log_dir=args.inspect_log_dir,
     )
 
-    total_rows = 0
-    for eval_log in eval_logs:
-        rows = await ingest_inspect_log(eval_log.location, args.db)
-        total_rows += rows
-        print(f"Ingested {rows} result rows from {eval_log.location}")
+    async def ingest_all() -> int:
+        total = 0
+        for eval_log in eval_logs:
+            rows = await ingest_inspect_log(eval_log.location, args.db)
+            total += rows
+            print(f"Ingested {rows} result rows from {eval_log.location}")
+        return total
 
+    total_rows = asyncio.run(ingest_all())
     print(f"\nDone. {total_rows} result rows written to {args.db}.")
 
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    main()

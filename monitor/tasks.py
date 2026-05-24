@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from inspect_ai import Task, task
 from inspect_ai.dataset import MemoryDataset, Sample
@@ -26,7 +27,7 @@ from monitor.scorers import (
 
 
 @solver
-def passthrough():
+def passthrough() -> Any:
     """No-op solver. Inspect would default to generate() if we omit a solver,
     which burns one model call per sample for no reason — our scorers operate
     on transcripts already in metadata."""

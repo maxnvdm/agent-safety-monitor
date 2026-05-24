@@ -11,9 +11,10 @@ tool results come back inside the *next* user event as
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 from inspect_ai.model import (
     ChatMessage,
@@ -22,7 +23,6 @@ from inspect_ai.model import (
     ChatMessageUser,
 )
 from inspect_ai.tool import ToolCall
-
 
 # ---------- data classes ----------------------------------------------------
 
@@ -173,9 +173,7 @@ def render_transcript(
                 elif btype == "tool_use":
                     name = block.get("name", "?")
                     inp = json.dumps(block.get("input", {}))
-                    lines.append(
-                        f"[TOOL_CALL] {name}({_truncate(inp, max_chars_per_payload)})"
-                    )
+                    lines.append(f"[TOOL_CALL] {name}({_truncate(inp, max_chars_per_payload)})")
 
     return "\n".join(lines)
 
