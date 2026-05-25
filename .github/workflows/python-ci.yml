@@ -1,0 +1,47 @@
+name: Python CI
+
+on:
+  push:
+    paths:
+      - '**.py'
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+      - '.github/workflows/python-ci.yml'
+  pull_request:
+    paths:
+      - '**.py'
+      - 'requirements*.txt'
+      - 'pyproject.toml'
+
+jobs:
+  test-lint-type:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pip
+        run: python -m pip install --upgrade pip
+      - name: Install dependencies
+        run: |
+          pip install .
+          pip install ruff mypy pip-audit bandit pytest pytest-cov httpx pytest-asyncio
+      - name: Lint with ruff
+        run: ruff check .
+      - name: Format check with ruff
+        run: ruff format --check .
+      - name: Type check
+        run: mypy .
+      - name: Run tests with coverage
+        run: pytest --cov=monitor --cov=api --cov-report=xml
+      - name: Dependency audit
+        run: pip-audit
+      - name: Security scan (Bandit)
+        run: bandit -r . --exclude ./tests,./build,./.venv
+      - name: Upload coverage report to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: true

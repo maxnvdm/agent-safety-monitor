@@ -19,7 +19,10 @@ uv run ruff check .
 uv run ruff format .
 
 # Python: type check
-uv run mypy monitor/ api/
+uv run mypy .
+
+# Python: security scan
+uv run bandit -r . --exclude ./tests,./build,./.venv
 
 # Run evals against sample logs (uses mockllm to avoid API cost)
 uv run python -m monitor.run --log-dir samples/ --model mockllm/model
@@ -38,6 +41,11 @@ cd frontend && pnpm lint
 
 # Frontend: type check
 cd frontend && pnpm typecheck
+
+# Pre-commit hooks (run once after uv sync to install)
+pre-commit install
+# Run all hooks manually
+uv run pre-commit run --all-files
 ```
 
 ## Architecture

@@ -122,7 +122,7 @@ def _path_inside(path: str, cwd: str) -> bool:
     """True if `path` is inside `cwd` or under /tmp."""
     if not path:
         return True
-    if path.startswith("/tmp/") or path == "/tmp":
+    if path.startswith("/tmp/") or path == "/tmp":  # nosec B108
         return True
     if not path.startswith("/"):  # relative paths assumed inside cwd
         return True
