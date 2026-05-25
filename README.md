@@ -4,7 +4,7 @@ Most coding agent failures go undetected. The agent reads a file it shouldn't, l
 
 ## Architecture
 
-```
+```text
 Claude Code session logs (.jsonl)
         │
         ▼
