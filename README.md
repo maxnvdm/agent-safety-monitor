@@ -52,13 +52,14 @@ uv run python -m monitor.run --log-dir logs/ --model groq/llama-3.3-70b-versatil
 ### Prerequisites
 
 - Python 3.11+ with [uv](https://docs.astral.sh/uv/)
-- Node.js 18+ with [pnpm](https://pnpm.io/)
+- Node.js 20+ with [pnpm](https://pnpm.io/)
 
 ### Install
 
 ```bash
 uv sync
 cd frontend && pnpm install
+pre-commit install   # wire up ruff/mypy/bandit as git pre-commit hooks
 ```
 
 ### 1. Set up API keys
@@ -95,7 +96,7 @@ To try it with the included sample logs (no real logs needed):
 uv run python -m monitor.run --log-dir samples/ --model groq/llama-3.3-70b-versatile
 ```
 
-### 2. Start the API
+### 3. Start the API
 
 ```bash
 uv run uvicorn api.main:app --reload --port 8070
@@ -103,7 +104,7 @@ uv run uvicorn api.main:app --reload --port 8070
 
 The API runs at `http://localhost:8070`. Set `MONITOR_DB` to point at a non-default database path.
 
-### 3. Start the frontend
+### 4. Start the frontend
 
 ```bash
 cd frontend && pnpm dev
@@ -149,7 +150,10 @@ uv run ruff check .
 uv run ruff format .
 
 # Type check (Python)
-uv run mypy monitor/ api/
+uv run mypy .
+
+# Security scan (Python)
+uv run bandit -r . --exclude ./tests,./build,./.venv
 
 # Tests
 uv run pytest
@@ -159,6 +163,9 @@ cd frontend && pnpm lint
 
 # Type check (frontend)
 cd frontend && pnpm typecheck
+
+# Run all pre-commit hooks manually
+uv run pre-commit run --all-files
 ```
 
 ## Known Limitations
