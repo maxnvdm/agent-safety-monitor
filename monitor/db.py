@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import aiosqlite
@@ -23,21 +24,31 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE TABLE IF NOT EXISTS results (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id   TEXT REFERENCES sessions(id) ON DELETE CASCADE,
-    scorer_name  TEXT NOT NULL,
-    passed       INTEGER NOT NULL,
-    explanation  TEXT,
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id     TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+    scorer_name    TEXT NOT NULL,
+    passed         INTEGER NOT NULL,
+    explanation    TEXT,
+    match_metadata TEXT,
     UNIQUE(session_id, scorer_name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_results_session ON results(session_id);
 """
 
+_MIGRATE_MATCH_METADATA = """
+ALTER TABLE results ADD COLUMN match_metadata TEXT;
+"""
+
 
 async def init_db(db_path: str = DEFAULT_DB) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(CREATE_TABLES)
+        # Idempotent migration: add match_metadata column if missing (pre-existing DBs).
+        async with db.execute("PRAGMA table_info(results)") as cur:
+            cols = {row[1] async for row in cur}
+        if "match_metadata" not in cols:
+            await db.execute(_MIGRATE_MATCH_METADATA)
         await db.commit()
 
 
@@ -86,19 +97,22 @@ async def ingest_inspect_log(eval_log_path: str | Path, db_path: str = DEFAULT_D
             )
 
             for scorer_name, score in scores.items():
+                match_meta = score.metadata if hasattr(score, "metadata") else None
                 await db.execute(
                     """
-                    INSERT INTO results (session_id, scorer_name, passed, explanation)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO results (session_id, scorer_name, passed, explanation, match_metadata)
+                    VALUES (?, ?, ?, ?, ?)
                     ON CONFLICT(session_id, scorer_name) DO UPDATE SET
                         passed = excluded.passed,
-                        explanation = excluded.explanation
+                        explanation = excluded.explanation,
+                        match_metadata = excluded.match_metadata
                     """,
                     (
                         session_id,
                         scorer_name,
                         1 if score.value == CORRECT else 0,
                         score.explanation or "",
+                        json.dumps(match_meta) if match_meta else None,
                     ),
                 )
                 rows_written += 1
@@ -106,3 +120,10 @@ async def ingest_inspect_log(eval_log_path: str | Path, db_path: str = DEFAULT_D
         await db.commit()
 
     return rows_written
+
+
+async def get_scored_session_ids(db_path: str = DEFAULT_DB) -> set[str]:
+    """Return session IDs that already have at least one result row (already scored)."""
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("SELECT DISTINCT session_id FROM results") as cur:
+            return {row[0] async for row in cur}

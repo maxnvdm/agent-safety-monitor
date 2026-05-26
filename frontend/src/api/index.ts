@@ -1,10 +1,14 @@
 import axios from 'axios'
-import type { Session, ScoreResult } from './types'
+import type { Session, ScoreResult, SessionFilters } from './types'
 
 const http = axios.create({ baseURL: '/api' })
 
-export async function fetchSessions(): Promise<Session[]> {
-  const { data } = await http.get<Session[]>('/sessions/')
+export async function fetchSessions(filters: SessionFilters = {}): Promise<Session[]> {
+  const params: Record<string, string> = {}
+  if (filters.failed_only) params.failed_only = 'true'
+  if (filters.scorer) params.scorer = filters.scorer
+  if (filters.branch) params.branch = filters.branch
+  const { data } = await http.get<Session[]>('/sessions/', { params })
   return data
 }
 
