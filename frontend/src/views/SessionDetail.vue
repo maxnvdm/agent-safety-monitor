@@ -80,6 +80,16 @@ const SCORER_LABELS: Record<string, string> = {
           <strong>{{ SCORER_LABELS[r.scorer_name] ?? r.scorer_name }}</strong>
         </div>
         <p v-if="r.explanation" class="explanation">{{ r.explanation }}</p>
+        <div v-if="!r.passed && r.match_metadata" class="match-metadata">
+          <div
+            v-for="[k, v] in Object.entries(r.match_metadata)"
+            :key="k"
+            class="meta-row"
+          >
+            <span class="meta-key">{{ k.replace(/_/g, ' ') }}</span>
+            <code class="meta-val">{{ Array.isArray(v) ? v.join(', ') : String(v) }}</code>
+          </div>
+        </div>
       </div>
 
       <TranscriptViewer :session-id="id" style="margin-top:1.5rem" />
@@ -98,9 +108,34 @@ const SCORER_LABELS: Record<string, string> = {
   margin-bottom: 0.4rem;
 }
 .explanation {
-  margin: 0;
+  margin: 0 0 0.5rem;
   font-size: 0.85rem;
   color: var(--text-muted);
   line-height: 1.5;
+}
+.match-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+  border-left: 2px solid var(--fail);
+  padding-left: 0.75rem;
+}
+.meta-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.8rem;
+}
+.meta-key {
+  color: var(--text-muted);
+  text-transform: capitalize;
+  min-width: 8rem;
+  flex-shrink: 0;
+}
+.meta-val {
+  font-family: var(--font-mono);
+  word-break: break-all;
+  color: var(--fail);
 }
 </style>

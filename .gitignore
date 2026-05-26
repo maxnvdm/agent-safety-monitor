@@ -30,3 +30,4 @@ dist/
 
 # varlock — encrypted local secrets (never commit)
 .env.local
+.coverage

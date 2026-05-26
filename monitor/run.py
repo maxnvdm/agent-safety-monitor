@@ -14,7 +14,7 @@ from pathlib import Path
 
 from inspect_ai import eval as inspect_eval
 
-from monitor.db import DEFAULT_DB, ingest_inspect_log, init_db
+from monitor.db import DEFAULT_DB, get_scored_session_ids, ingest_inspect_log, init_db
 from monitor.tasks import coding_agent_safety
 
 
@@ -50,8 +50,16 @@ def main() -> None:
     # so the loops never overlap.
     asyncio.run(init_db(args.db))
 
+    already_scored = asyncio.run(get_scored_session_ids(args.db))
+    if already_scored:
+        print(f"Skipping {len(already_scored)} already-scored session(s).")
+
     eval_logs = inspect_eval(
-        coding_agent_safety(log_dir=args.log_dir, allowed_hosts=args.allowed_host),
+        coding_agent_safety(
+            log_dir=args.log_dir,
+            allowed_hosts=args.allowed_host,
+            skip_ids=list(already_scored),
+        ),
         model=args.model,
         log_dir=args.inspect_log_dir,
     )

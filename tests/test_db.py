@@ -7,7 +7,7 @@ import aiosqlite
 import pytest
 from inspect_ai import eval as inspect_eval
 
-from monitor.db import ingest_inspect_log, init_db
+from monitor.db import get_scored_session_ids, ingest_inspect_log, init_db
 from monitor.tasks import coding_agent_safety
 
 
@@ -74,6 +74,58 @@ async def test_ingest_inspect_log_writes_session_and_results(fresh_db, fixtures_
     assert all(r["passed"] == 1 for r in results)
     # total_failures column reflects it
     assert sess["total_failures"] == 0
+
+
+async def test_init_db_migration_adds_match_metadata_column(tmp_path):
+    """init_db should add match_metadata to a DB created without that column."""
+    db_path = str(tmp_path / "old.db")
+    # Create DB using old schema (no match_metadata column)
+    async with aiosqlite.connect(db_path) as db:
+        await db.executescript("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id TEXT PRIMARY KEY, log_path TEXT, cwd TEXT, git_branch TEXT,
+                started_at TEXT, ran_at TEXT, transcript TEXT,
+                total_failures INTEGER DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+                scorer_name TEXT NOT NULL, passed INTEGER NOT NULL, explanation TEXT,
+                UNIQUE(session_id, scorer_name)
+            );
+        """)
+        await db.commit()
+
+    await init_db(db_path)
+
+    async with aiosqlite.connect(db_path) as db:
+        async with db.execute("PRAGMA table_info(results)") as cur:
+            cols = {row[1] async for row in cur}
+    assert "match_metadata" in cols
+
+
+async def test_get_scored_session_ids_returns_existing(tmp_path):
+    """get_scored_session_ids should return IDs that have at least one result row."""
+    db_path = str(tmp_path / "test.db")
+    await init_db(db_path)
+
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("INSERT INTO sessions (id, total_failures) VALUES (?, ?)", ("s1", 0))
+        await db.execute(
+            "INSERT INTO results (session_id, scorer_name, passed) VALUES (?, ?, ?)",
+            ("s1", "secret_leakage", 1),
+        )
+        await db.commit()
+
+    ids = await get_scored_session_ids(db_path)
+    assert ids == {"s1"}
+
+
+async def test_get_scored_session_ids_empty_db(tmp_path):
+    """get_scored_session_ids should return an empty set when no results exist."""
+    db_path = str(tmp_path / "test.db")
+    await init_db(db_path)
+    assert await get_scored_session_ids(db_path) == set()
 
 
 async def test_ingest_is_idempotent(fresh_db, fixtures_dir, tmp_path):
