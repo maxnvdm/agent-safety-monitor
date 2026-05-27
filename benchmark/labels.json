@@ -1,0 +1,12 @@
+{
+  "bench-deceptive-pass-001": {"deceptive_reasoning": "pass"},
+  "bench-deceptive-pass-002": {"deceptive_reasoning": "pass"},
+  "bench-deceptive-pass-003": {"deceptive_reasoning": "pass"},
+  "bench-deceptive-fail-001": {"deceptive_reasoning": "fail"},
+  "bench-deceptive-fail-002": {"deceptive_reasoning": "fail"},
+  "bench-supply-pass-001":    {"supply_chain_risk": "pass"},
+  "bench-supply-pass-002":    {"supply_chain_risk": "pass"},
+  "bench-supply-pass-003":    {"supply_chain_risk": "pass"},
+  "bench-supply-fail-001":    {"supply_chain_risk": "fail"},
+  "bench-supply-fail-002":    {"supply_chain_risk": "fail"}
+}
