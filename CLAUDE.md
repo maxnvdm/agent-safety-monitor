@@ -27,13 +27,18 @@ uv run bandit -r . --exclude ./tests,./build,./.venv
 # Run evals against sample logs (uses mockllm to avoid API cost)
 uv run python -m monitor.run --log-dir samples/ --model mockllm/model
 
+# Benchmark LLM scorers across models (accuracy/latency/cost vs labelled sessions)
+uv run python -m benchmark.run --models mockllm/model
+# Re-print latest stored benchmark results without re-running evals
+uv run python -m benchmark.run --report-only
+
 # Start the API (default db: monitor.db, override with MONITOR_DB env var)
 uv run uvicorn api.main:app --reload --port 8070
 
 # Frontend: install deps
 cd frontend && pnpm install
 
-# Frontend: dev server (proxies /api → localhost:8000)
+# Frontend: dev server (proxies /api → localhost:8070)
 cd frontend && pnpm dev
 
 # Frontend: lint
@@ -58,13 +63,15 @@ The system is a pipeline: Claude Code JSONL logs → Inspect AI eval → SQLite 
 
 **`monitor/tasks.py`** — wires scorers into an Inspect `Task` via `coding_agent_safety()`. Uses a `passthrough` no-op solver (avoids burning a model call per sample since scorers work on pre-built metadata, not model output). `sessions_dataset()` builds one `Sample` per `.jsonl` file, with all scorer inputs in `metadata`.
 
-**`monitor/db.py`** — SQLite schema (`sessions`, `results` tables) and `ingest_inspect_log()` which parses an Inspect log file and upserts results. `init_db()` is idempotent.
+**`monitor/db.py`** — SQLite schema (`sessions`, `results` tables) and `ingest_inspect_log()` which parses an Inspect log file and upserts results. `init_db()` is idempotent and migrates older databases (adds the `match_metadata` column via `PRAGMA table_info` check). `get_scored_session_ids()` powers skip-already-scored caching.
 
-**`monitor/run.py`** — CLI entry point. Parses args, calls `init_db`, runs `inspect_eval` (sync), then ingests all resulting logs. Two separate `asyncio.run()` calls because `inspect_eval` starts its own event loop.
+**`monitor/run.py`** — CLI entry point. Parses args, calls `init_db`, loads already-scored session IDs (passed to the task as `skip_ids` so re-runs don't repeat LLM calls), runs `inspect_eval` (sync), then ingests all resulting logs. Two separate `asyncio.run()` calls because `inspect_eval` starts its own event loop.
 
-**`api/`** — FastAPI app with three route groups: `GET /sessions/`, `GET /sessions/{id}`, `GET /sessions/{id}/transcript`, `GET /results/{id}`. Runs on port 8070. DB path is read from the `MONITOR_DB` environment variable at module load time; tests reload the modules via `importlib.reload` to pick up a test-specific path.
+**`benchmark/`** — measures LLM-scorer accuracy across models. `run.py` is the CLI (`--models`, `--report-only`); it evals each model against the 10 labelled sessions in `benchmark/sessions/` (ground truth in `labels.json`), compares predictions to labels, and persists per-run accuracy/latency/token/cost stats via `db.py` (`benchmark_runs`/`benchmark_results` tables, same SQLite file). `pricing.py` holds the per-1k-token rate table; `report.py` formats the comparison table.
 
-**`frontend/`** — Vue 3 + Vite. API calls go through `src/api/index.ts` (axios, baseURL `/api`). The Vite dev server proxies `/api` → `http://localhost:8000`. Two views: `SessionList` and `SessionDetail`. Components: `FailureBadge`, `ScoreBar`, `TranscriptViewer`.
+**`api/`** — FastAPI app with three route groups: `GET /sessions/`, `GET /sessions/{id}`, `GET /sessions/{id}/transcript`, `GET /results/{id}`. `GET /sessions/` accepts `failed_only`, `scorer`, and `branch` filter params (parameterized SQL, applied server-side). Result rows parse the `match_metadata` JSON column into a dict, falling back to the raw string if unparseable. Runs on port 8070. DB path is read from the `MONITOR_DB` environment variable at module load time; tests reload the modules via `importlib.reload` to pick up a test-specific path.
+
+**`frontend/`** — Vue 3 + Vite. API calls go through `src/api/index.ts` (axios, baseURL `/api`). The Vite dev server proxies `/api` → `http://localhost:8070`. Two views: `SessionList` (with a reactive filter bar: failures-only checkbox, scorer dropdown, branch input) and `SessionDetail` (shows match-metadata callouts for failed scorers). Components: `FailureBadge`, `ScoreBar`, `TranscriptViewer`.
 
 **`tests/`** — pytest with `asyncio_mode = "auto"`. Fixtures in `tests/fixtures/` are real Claude Code JSONL files used by integration tests. `test_api.py` seeds a real SQLite DB via an actual Inspect eval run against fixtures, then hits the FastAPI app through `TestClient`.
 
@@ -73,3 +80,5 @@ The system is a pipeline: Claude Code JSONL logs → Inspect AI eval → SQLite 
 - `inspect_eval` is synchronous and starts its own anyio event loop — never call it inside an `async` function or `asyncio.run()`.
 - The `MONITOR_DB` env var must be set before importing `api.routes.*` — tests use `monkeypatch.setenv` + `importlib.reload` for this reason.
 - Scorers read from `state.metadata`, not from model output — the passthrough solver is intentional.
+- `tests/conftest.py` patches `tiktoken.get_encoding` (autouse) because mockllm's token counting otherwise downloads BPE data from OpenAI's servers, which fails in network-restricted CI.
+- `fastapi` is pinned `<0.136.0` — 0.136.x was flagged malicious (MAL-2026-4750). Don't bump past it without checking the advisory is resolved.
