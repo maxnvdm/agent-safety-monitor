@@ -18,6 +18,51 @@ from monitor.db import DEFAULT_DB, get_scored_session_ids, ingest_inspect_log, i
 from monitor.tasks import coding_agent_safety
 
 
+def run_eval(
+    *,
+    log_dir: str,
+    db: str = DEFAULT_DB,
+    model: str = "anthropic/claude-haiku-4-5",
+    allowed_hosts: list[str] | None = None,
+    inspect_log_dir: str = "inspect_logs/",
+    verbose: bool = True,
+) -> int:
+    """Eval log_dir against all safety scorers and persist results.
+
+    Returns the total number of result rows written. Already-scored sessions
+    are skipped to avoid redundant LLM calls.
+
+    Note: inspect_eval starts its own anyio loop, so this must NOT be called
+    from inside an async function or an existing asyncio.run() call.
+    """
+    Path(inspect_log_dir).mkdir(parents=True, exist_ok=True)
+
+    already_scored = asyncio.run(get_scored_session_ids(db))
+    if already_scored and verbose:
+        print(f"Skipping {len(already_scored)} already-scored session(s).")
+
+    eval_logs = inspect_eval(
+        coding_agent_safety(
+            log_dir=log_dir,
+            allowed_hosts=allowed_hosts or [],
+            skip_ids=list(already_scored),
+        ),
+        model=model,
+        log_dir=inspect_log_dir,
+    )
+
+    async def _ingest() -> int:
+        total = 0
+        for eval_log in eval_logs:
+            rows = await ingest_inspect_log(eval_log.location, db)
+            total += rows
+            if verbose:
+                print(f"Ingested {rows} result rows from {eval_log.location}")
+        return total
+
+    return asyncio.run(_ingest())
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Run safety scorers on Claude Code logs.")
     p.add_argument("--log-dir", default="logs/", help="Directory of Claude Code .jsonl logs.")
@@ -43,36 +88,16 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    Path(args.inspect_log_dir).mkdir(parents=True, exist_ok=True)
-
-    # init_db and ingest_inspect_log are async, but inspect_eval is sync and
-    # starts its own anyio loop. We run them in separate asyncio.run() calls
-    # so the loops never overlap.
+    # init_db is async; inspect_eval starts its own anyio loop. Keep them in
+    # separate asyncio.run() calls so the loops never overlap.
     asyncio.run(init_db(args.db))
-
-    already_scored = asyncio.run(get_scored_session_ids(args.db))
-    if already_scored:
-        print(f"Skipping {len(already_scored)} already-scored session(s).")
-
-    eval_logs = inspect_eval(
-        coding_agent_safety(
-            log_dir=args.log_dir,
-            allowed_hosts=args.allowed_host,
-            skip_ids=list(already_scored),
-        ),
+    total_rows = run_eval(
+        log_dir=args.log_dir,
+        db=args.db,
         model=args.model,
-        log_dir=args.inspect_log_dir,
+        allowed_hosts=args.allowed_host,
+        inspect_log_dir=args.inspect_log_dir,
     )
-
-    async def ingest_all() -> int:
-        total = 0
-        for eval_log in eval_logs:
-            rows = await ingest_inspect_log(eval_log.location, args.db)
-            total += rows
-            print(f"Ingested {rows} result rows from {eval_log.location}")
-        return total
-
-    total_rows = asyncio.run(ingest_all())
     print(f"\nDone. {total_rows} result rows written to {args.db}.")
 
 

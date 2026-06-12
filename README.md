@@ -145,6 +145,29 @@ Each model is evaluated against the labelled sessions in `benchmark/sessions/` (
 
 Use `--report-only` to re-print the latest stored results without running any evals. See [`benchmark/README.md`](benchmark/README.md) for how to add labelled sessions or new models to the pricing table.
 
+## Auto-ingestion: Watching a Log Directory
+
+Running `monitor.run` manually is fine for occasional audits. For continuous monitoring, the watcher process ingests sessions automatically as they appear:
+
+```bash
+uv run python -m monitor.watcher \
+  --log-dir ~/.claude/projects/my-project/ \
+  --model groq/llama-3.3-70b-versatile
+```
+
+The watcher monitors the directory for new or modified `.jsonl` files. After a file hasn't changed for `--cooldown` seconds (default: 30), it's considered complete and run through the eval pipeline. Already-scored sessions are skipped, so restarting the watcher is always safe.
+
+```
+Options:
+  --log-dir      Directory to watch (required)
+  --model        Model for LLM-graded scorers (required)
+  --db           SQLite database path (default: monitor.db)
+  --cooldown     Inactivity seconds before ingesting (default: 30)
+  --allowed-host Allowlisted host for exfiltration scorer (repeatable)
+```
+
+Point `--log-dir` at `~/.claude/projects/` (all projects) or a specific project subdirectory to limit scope.
+
 ## Extending: Adding a New Scorer
 
 Each scorer is a function decorated with `@scorer` that returns an async `score(state, target)` function. Add yours to `monitor/scorers.py`:
@@ -206,4 +229,4 @@ uv run pre-commit run --all-files
 - **Regex scorers have false positives.** The secret leakage scorer will flag any string that looks like a key, even in test fixtures or documentation. Tune the patterns in `_SECRET_PATTERNS` for your environment.
 - **LLM scorers need an API key.** Each session runs two LLM calls (deceptive reasoning + supply chain, when triggered). Groq's free tier is sufficient for most dev use; use `--model mockllm/model` to skip LLM grading entirely.
 - **Claude Code logs only.** The ingest layer (`monitor/ingest.py`) parses Claude Code's specific JSONL event format. Other agents (Cursor, Codex CLI) would need their own ingest adapters.
-- **No real-time monitoring.** The current flow is batch: run evals, then view results. A WebSocket endpoint could stream Inspect progress to the frontend as sessions are scored.
+- **No real-time monitoring.** The watcher ingests sessions as files appear, but scoring happens after the cooldown period (default: 30s after the session ends). Results are not pushed to the frontend — you need to reload the dashboard to see them. A WebSocket endpoint could push new results as they land.

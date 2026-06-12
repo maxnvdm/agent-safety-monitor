@@ -27,6 +27,9 @@ uv run bandit -r . --exclude ./tests,./build,./.venv
 # Run evals against sample logs (uses mockllm to avoid API cost)
 uv run python -m monitor.run --log-dir samples/ --model mockllm/model
 
+# Watch a directory and auto-ingest new sessions (30s cooldown by default)
+uv run python -m monitor.watcher --log-dir logs/ --model mockllm/model
+
 # Benchmark LLM scorers across models (accuracy/latency/cost vs labelled sessions)
 uv run python -m benchmark.run --models mockllm/model
 # Re-print latest stored benchmark results without re-running evals
@@ -65,7 +68,9 @@ The system is a pipeline: Claude Code JSONL logs → Inspect AI eval → SQLite 
 
 **`monitor/db.py`** — SQLite schema (`sessions`, `results` tables) and `ingest_inspect_log()` which parses an Inspect log file and upserts results. `init_db()` is idempotent and migrates older databases (adds the `match_metadata` column via `PRAGMA table_info` check). `get_scored_session_ids()` powers skip-already-scored caching.
 
-**`monitor/run.py`** — CLI entry point. Parses args, calls `init_db`, loads already-scored session IDs (passed to the task as `skip_ids` so re-runs don't repeat LLM calls), runs `inspect_eval` (sync), then ingests all resulting logs. Two separate `asyncio.run()` calls because `inspect_eval` starts its own event loop.
+**`monitor/run.py`** — CLI entry point plus `run_eval()`, a reusable function that wraps `get_scored_session_ids → inspect_eval → ingest_inspect_log`. `main()` calls `init_db` then delegates to `run_eval`. Two separate `asyncio.run()` calls because `inspect_eval` starts its own anyio event loop.
+
+**`monitor/watcher.py`** — Background process that watches a directory with `watchdog`. `_SessionHandler` queues `.jsonl` files on create/modify events; `_flush_ready` processes files that have been stable for `--cooldown` seconds by copying them to a temp dir and calling `run_eval`. Errors per-batch are logged and skipped; already-scored sessions are handled transparently by `run_eval`'s `skip_ids` path.
 
 **`benchmark/`** — measures LLM-scorer accuracy across models. `run.py` is the CLI (`--models`, `--report-only`); it evals each model against the 10 labelled sessions in `benchmark/sessions/` (ground truth in `labels.json`), compares predictions to labels, and persists per-run accuracy/latency/token/cost stats via `db.py` (`benchmark_runs`/`benchmark_results` tables, same SQLite file). `pricing.py` holds the per-1k-token rate table; `report.py` formats the comparison table.
 
