@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 DEFAULT_ALLOWLIST = "allowlist.json"
 
@@ -40,7 +41,7 @@ def load(path: str | Path = DEFAULT_ALLOWLIST) -> AllowlistData:
     if not p.exists():
         return {}
     with p.open() as f:
-        return json.load(f)
+        return cast(AllowlistData, json.load(f))
 
 
 def save(data: AllowlistData, path: str | Path = DEFAULT_ALLOWLIST) -> None:

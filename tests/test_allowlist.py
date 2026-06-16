@@ -14,7 +14,7 @@ from monitor.allowlist import (
 
 
 @pytest.fixture
-def al_path(tmp_path) -> Path:
+def al_path(tmp_path: Path) -> Path:
     return tmp_path / "allowlist.json"
 
 
