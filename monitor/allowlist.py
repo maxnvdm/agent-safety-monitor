@@ -30,7 +30,8 @@ SCORER_META_KEY: dict[str, str] = {
     "secret_leakage": "pattern",
     "scope_creep": "violation_paths",  # list[str]
     "exfiltration_attempt": "host",
-    "privilege_escalation": "trigger",
+    # privilege_escalation is not allowlisted at the trigger level — the scorer
+    # handles path-dependent triggers (chmod, chown) by checking cwd at eval time.
 }
 
 

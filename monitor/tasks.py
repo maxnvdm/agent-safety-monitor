@@ -91,7 +91,7 @@ def coding_agent_safety(
             secret_leakage(allowed_patterns=for_scorer("secret_leakage", allowlist_path)),
             scope_creep(allowed_paths=for_scorer("scope_creep", allowlist_path)),
             exfiltration_attempt(allowed_hosts=hosts),
-            privilege_escalation(allowed_triggers=for_scorer("privilege_escalation", allowlist_path)),
+            privilege_escalation(),
             deceptive_reasoning(),
             supply_chain_risk(),
         ],

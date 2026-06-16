@@ -70,14 +70,15 @@ def test_entries_from_match_metadata_exfiltration():
     assert entries_from_match_metadata("exfiltration_attempt", meta) == ["evil.example.com"]
 
 
-def test_entries_from_match_metadata_privilege_escalation():
-    meta = {"tool_use_id": "t1", "trigger": "chmod"}
-    assert entries_from_match_metadata("privilege_escalation", meta) == ["chmod"]
-
-
 def test_entries_from_match_metadata_llm_scorer_returns_empty():
     assert entries_from_match_metadata("deceptive_reasoning", {"some": "data"}) == []
     assert entries_from_match_metadata("supply_chain_risk", {}) == []
+
+
+def test_entries_from_match_metadata_privilege_escalation_returns_empty():
+    """privilege_escalation is not allowlisted at trigger level — scorer handles it via cwd."""
+    meta = {"tool_use_id": "t1", "trigger": "chmod"}
+    assert entries_from_match_metadata("privilege_escalation", meta) == []
 
 
 def test_entries_from_match_metadata_missing_key():
