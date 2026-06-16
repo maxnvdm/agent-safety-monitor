@@ -60,7 +60,9 @@ async def list_sessions(
     failed_only: bool = Query(False, description="Return only sessions with at least one failure."),
     scorer: str | None = Query(None, description="Filter to sessions that failed this scorer."),
     branch: str | None = Query(None, description="Filter by git branch (exact match)."),
-    cwd: str | None = Query(None, description="Filter by working directory/project path (exact match)."),
+    cwd: str | None = Query(
+        None, description="Filter by working directory/project path (exact match)."
+    ),
 ) -> list[dict]:
     """List sessions with optional filtering. Excludes transcript (can be large)."""
     db = await _connect()

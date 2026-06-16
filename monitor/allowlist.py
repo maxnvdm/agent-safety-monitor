@@ -63,9 +63,7 @@ def add_entries(
     return new
 
 
-def entries_from_match_metadata(
-    scorer_name: str, match_metadata: dict
-) -> list[str]:
+def entries_from_match_metadata(scorer_name: str, match_metadata: dict) -> list[str]:
     """Extract the allowlistable values from a result's match_metadata."""
     key = SCORER_META_KEY.get(scorer_name)
     if not key:
