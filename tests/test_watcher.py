@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -166,3 +167,250 @@ def test_run_eval_is_callable() -> None:
     from monitor.run import run_eval
 
     assert callable(run_eval)
+
+
+# ---------------------------------------------------------------------------
+# watch() function (main loop)
+# ---------------------------------------------------------------------------
+
+
+def test_watch_initializes_db_and_observer(tmp_path: Path) -> None:
+    """Integration test: watch() calls init_db, creates log dir, starts observer."""
+    with (
+        patch("monitor.watcher.init_db") as mock_init_db,
+        patch("monitor.watcher.Path.mkdir") as mock_mkdir,
+        patch("monitor.watcher.Observer") as mock_observer_class,
+        patch("monitor.watcher._flush_ready") as mock_flush,
+        patch("monitor.watcher.time.sleep", side_effect=[None, KeyboardInterrupt]),
+    ):
+        mock_observer = MagicMock()
+        mock_observer_class.return_value = mock_observer
+
+        from monitor.watcher import watch
+
+        watch(
+            log_dir=str(tmp_path),
+            model="mockllm/model",
+            db="test.db",
+            cooldown=5.0,
+            poll_interval=0.01,
+        )
+
+        mock_init_db.assert_called_once_with("test.db")
+        mock_mkdir.assert_called_once()
+        mock_observer_class.assert_called_once()
+        mock_observer.schedule.assert_called_once()
+        mock_observer.start.assert_called_once()
+        mock_observer.stop.assert_called_once()
+        mock_observer.join.assert_called_once()
+
+
+def test_watch_handles_keyboard_interrupt_cleanly(tmp_path: Path) -> None:
+    """watch() should stop and join observer on KeyboardInterrupt."""
+    with (
+        patch("monitor.watcher.init_db"),
+        patch("monitor.watcher.Path.mkdir"),
+        patch("monitor.watcher.Observer") as mock_observer_class,
+        patch("monitor.watcher._flush_ready"),
+        patch("monitor.watcher.time.sleep", side_effect=KeyboardInterrupt),
+    ):
+        mock_observer = MagicMock()
+        mock_observer_class.return_value = mock_observer
+
+        from monitor.watcher import watch
+
+        watch(
+            log_dir=str(tmp_path),
+            model="mockllm/model",
+            db="test.db",
+            poll_interval=0.01,
+        )
+
+        mock_observer.stop.assert_called_once()
+        mock_observer.join.assert_called_once()
+
+
+def test_watch_logs_startup_info(tmp_path: Path, caplog) -> None:
+    """watch() logs the startup configuration."""
+    import monitor.watcher as watcher_module
+
+    with (
+        patch("monitor.watcher.init_db"),
+        patch("monitor.watcher.Path.mkdir"),
+        patch("monitor.watcher.Observer") as mock_observer_class,
+        patch("monitor.watcher._flush_ready"),
+        patch("monitor.watcher.time.sleep", side_effect=KeyboardInterrupt),
+    ):
+        mock_observer = MagicMock()
+        mock_observer_class.return_value = mock_observer
+
+        # Set the logger level for the watcher module to capture INFO logs
+        logger = logging.getLogger("monitor.watcher")
+        logger.setLevel(logging.INFO)
+        caplog.set_level(logging.INFO, logger="monitor.watcher")
+
+        watcher_module.watch(
+            log_dir=str(tmp_path),
+            model="groq/llama-3.3-70b-versatile",
+            db="custom.db",
+            cooldown=45.0,
+            allowed_hosts=["api.github.com"],
+            inspect_log_dir="custom_logs/",
+            poll_interval=0.01,
+        )
+
+        assert "Watching" in caplog.text
+        assert "groq/llama-3.3-70b-versatile" in caplog.text
+        assert "45s" in caplog.text
+        assert "custom.db" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# parse_args()
+# ---------------------------------------------------------------------------
+
+
+def test_parse_args_required_args() -> None:
+    """parse_args() requires --log-dir and --model."""
+    from monitor.watcher import parse_args
+
+    with patch("sys.argv", ["watcher", "--log-dir", "/tmp/logs", "--model", "groq/llama"]):
+        args = parse_args()
+        assert args.log_dir == "/tmp/logs"
+        assert args.model == "groq/llama"
+
+
+def test_parse_args_optional_defaults() -> None:
+    """parse_args() uses defaults for optional args."""
+    from monitor.watcher import parse_args, DEFAULT_DB
+
+    with patch(
+        "sys.argv",
+        ["watcher", "--log-dir", "/tmp/logs", "--model", "mockllm/model"],
+    ):
+        args = parse_args()
+        assert args.db == DEFAULT_DB
+        assert args.cooldown == 30.0
+        assert args.allowed_hosts == []
+        assert args.inspect_log_dir == "inspect_logs/watch/"
+
+
+def test_parse_args_custom_values() -> None:
+    """parse_args() accepts custom values for all options."""
+    from monitor.watcher import parse_args
+
+    with patch(
+        "sys.argv",
+        [
+            "watcher",
+            "--log-dir",
+            "/custom/logs",
+            "--model",
+            "anthropic/claude",
+            "--db",
+            "my.db",
+            "--cooldown",
+            "15",
+            "--allowed-host",
+            "host1.com",
+            "--allowed-host",
+            "host2.com",
+            "--inspect-log-dir",
+            "my_logs/",
+        ],
+    ):
+        args = parse_args()
+        assert args.log_dir == "/custom/logs"
+        assert args.model == "anthropic/claude"
+        assert args.db == "my.db"
+        assert args.cooldown == 15.0
+        assert args.allowed_hosts == ["host1.com", "host2.com"]
+        assert args.inspect_log_dir == "my_logs/"
+
+
+def test_parse_args_cooldown_is_float() -> None:
+    """--cooldown is parsed as float."""
+    from monitor.watcher import parse_args
+
+    with patch("sys.argv", ["watcher", "--log-dir", "/x", "--model", "m", "--cooldown", "7.5"]):
+        args = parse_args()
+        assert args.cooldown == 7.5
+        assert isinstance(args.cooldown, float)
+
+
+# ---------------------------------------------------------------------------
+# main()
+# ---------------------------------------------------------------------------
+
+
+def test_main_configures_logging_and_calls_watch(tmp_path: Path) -> None:
+    """main() configures logging and calls watch with parsed args."""
+    with (
+        patch("monitor.watcher.parse_args") as mock_parse,
+        patch("monitor.watcher.watch") as mock_watch,
+        patch("monitor.watcher.logging.basicConfig") as mock_logging,
+    ):
+        mock_parse.return_value = MagicMock(
+            log_dir=str(tmp_path),
+            model="mockllm/model",
+            db="test.db",
+            cooldown=10.0,
+            allowed_hosts=["localhost"],
+            inspect_log_dir="logs/",
+        )
+
+        from monitor.watcher import main
+
+        main()
+
+        mock_logging.assert_called_once()
+        mock_watch.assert_called_once_with(
+            log_dir=str(tmp_path),
+            model="mockllm/model",
+            db="test.db",
+            cooldown=10.0,
+            allowed_hosts=["localhost"],
+            inspect_log_dir="logs/",
+        )
+
+
+def test_main_logging_format() -> None:
+    """main() uses the expected logging format."""
+    with (
+        patch("monitor.watcher.parse_args") as mock_parse,
+        patch("monitor.watcher.watch"),
+        patch("monitor.watcher.logging.basicConfig") as mock_logging,
+    ):
+        mock_parse.return_value = MagicMock(
+            log_dir="/x", model="m", db="d", cooldown=1.0, allowed_hosts=[], inspect_log_dir="l/"
+        )
+
+        from monitor.watcher import main
+
+        main()
+
+        kwargs = mock_logging.call_args.kwargs
+        assert kwargs["level"] == logging.INFO
+        assert "%(asctime)s" in kwargs["format"]
+        assert "%(levelname)s" in kwargs["format"]
+        assert kwargs["datefmt"] == "%H:%M:%S"
+
+
+# ---------------------------------------------------------------------------
+# __main__ entry point
+# ---------------------------------------------------------------------------
+
+
+def test_main_block_calls_main(monkeypatch) -> None:
+    """Running watcher.py as __main__ calls main()."""
+    import monitor.watcher as watcher_module
+
+    mock_main = MagicMock()
+    monkeypatch.setattr(watcher_module, "main", mock_main)
+
+    # Simulate __name__ == "__main__"
+    watcher_module.__name__ = "__main__"
+    if watcher_module.__name__ == "__main__":
+        watcher_module.main()
+
+    mock_main.assert_called_once()

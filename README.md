@@ -157,7 +157,7 @@ uv run python -m monitor.watcher \
 
 The watcher monitors the directory for new or modified `.jsonl` files. After a file hasn't changed for `--cooldown` seconds (default: 30), it's considered complete and run through the eval pipeline. Already-scored sessions are skipped, so restarting the watcher is always safe.
 
-```
+```text
 Options:
   --log-dir      Directory to watch (required)
   --model        Model for LLM-graded scorers (required)
