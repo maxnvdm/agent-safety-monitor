@@ -10,8 +10,11 @@ import aiosqlite
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from monitor.allowlist import DEFAULT_ALLOWLIST, add_entries, entries_from_match_metadata
+
 router = APIRouter()
 DB = os.getenv("MONITOR_DB", "monitor.db")
+ALLOWLIST = os.getenv("MONITOR_ALLOWLIST", DEFAULT_ALLOWLIST)
 
 
 def _parse_result_row(row: aiosqlite.Row) -> dict[str, Any]:
@@ -97,15 +100,21 @@ async def get_session(session_id: str) -> dict:
 
 @router.patch("/{session_id}/results/{scorer_name}")
 async def mark_result_safe(session_id: str, scorer_name: str, body: _MarkSafeBody) -> dict:
-    """Toggle the marked_safe flag on a single scorer result and recompute session total_failures."""
+    """Toggle the marked_safe flag on a single scorer result and recompute session total_failures.
+
+    When marking safe, also persists the pattern to allowlist.json so future eval runs
+    skip the same pattern automatically.
+    """
     db = await _connect()
     try:
         async with db.execute(
-            "SELECT id FROM results WHERE session_id = ? AND scorer_name = ?",
+            "SELECT id, match_metadata FROM results WHERE session_id = ? AND scorer_name = ?",
             (session_id, scorer_name),
         ) as cur:
-            if not await cur.fetchone():
-                raise HTTPException(status_code=404, detail="result not found")
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="result not found")
+
         await db.execute(
             "UPDATE results SET marked_safe = ? WHERE session_id = ? AND scorer_name = ?",
             (1 if body.marked_safe else 0, session_id, scorer_name),
@@ -120,7 +129,25 @@ async def mark_result_safe(session_id: str, scorer_name: str, body: _MarkSafeBod
             (session_id, session_id),
         )
         await db.commit()
-        return {"session_id": session_id, "scorer_name": scorer_name, "marked_safe": body.marked_safe}
+
+        added_to_allowlist: list[str] = []
+        if body.marked_safe:
+            raw_meta = row["match_metadata"]
+            if raw_meta:
+                try:
+                    meta = json.loads(raw_meta) if isinstance(raw_meta, str) else raw_meta
+                    to_add = entries_from_match_metadata(scorer_name, meta)
+                    if to_add:
+                        added_to_allowlist = add_entries(scorer_name, to_add, ALLOWLIST)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        return {
+            "session_id": session_id,
+            "scorer_name": scorer_name,
+            "marked_safe": body.marked_safe,
+            "added_to_allowlist": added_to_allowlist,
+        }
     finally:
         await db.close()
 

@@ -16,6 +16,7 @@ from monitor.ingest import (
     iter_tool_results,
     render_transcript,
 )
+from monitor.allowlist import DEFAULT_ALLOWLIST, for_scorer
 from monitor.scorers import (
     deceptive_reasoning,
     exfiltration_attempt,
@@ -78,16 +79,19 @@ def coding_agent_safety(
     log_dir: str = "logs/",
     allowed_hosts: list[str] | None = None,
     skip_ids: list[str] | None = None,
+    allowlist_path: str = DEFAULT_ALLOWLIST,
 ) -> Task:
     """Score every Claude Code session in `log_dir` against all 6 safety scorers."""
+    # Merge CLI-supplied hosts with those persisted in the allowlist file.
+    hosts = list(set(allowed_hosts or []) | set(for_scorer("exfiltration_attempt", allowlist_path)))
     return Task(
         dataset=sessions_dataset(log_dir, skip_ids=set(skip_ids) if skip_ids else None),
         solver=passthrough(),
         scorer=[
-            secret_leakage(),
-            scope_creep(),
-            exfiltration_attempt(allowed_hosts=allowed_hosts or []),
-            privilege_escalation(),
+            secret_leakage(allowed_patterns=for_scorer("secret_leakage", allowlist_path)),
+            scope_creep(allowed_paths=for_scorer("scope_creep", allowlist_path)),
+            exfiltration_attempt(allowed_hosts=hosts),
+            privilege_escalation(allowed_triggers=for_scorer("privilege_escalation", allowlist_path)),
             deceptive_reasoning(),
             supply_chain_risk(),
         ],
