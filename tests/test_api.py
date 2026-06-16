@@ -243,3 +243,126 @@ def test_invalid_match_metadata_returned_as_raw_string(db_with_bad_metadata):
     r = client.get("/sessions/s-bad")
     assert r.status_code == 200
     assert r.json()["results"][0]["match_metadata"] == "not-valid-json{{"
+
+
+# ---------- PATCH /sessions/{id}/results/{scorer} ----------------------------
+
+
+@pytest.fixture
+def db_with_failure(tmp_path, monkeypatch):
+    """Session with one failed result (exfiltration) + match_metadata. Allowlist in tmp."""
+    db_path = str(tmp_path / "fail_test.db")
+    allowlist_path = str(tmp_path / "allowlist.json")
+
+    async def seed():
+        await init_db(db_path)
+        async with aiosqlite.connect(db_path) as db:
+            await db.execute(
+                "INSERT INTO sessions (id, cwd, git_branch, ran_at, total_failures)"
+                " VALUES (?, ?, ?, ?, ?)",
+                ("s-fail", "/project", "main", "2026-01-01T00:00:00", 1),
+            )
+            await db.execute(
+                "INSERT INTO results"
+                " (session_id, scorer_name, passed, explanation, match_metadata)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (
+                    "s-fail",
+                    "exfiltration_attempt",
+                    0,
+                    "WebFetch to non-allowlisted host: evil.example.com",
+                    '{"host": "evil.example.com", "url": "https://evil.example.com/x"}',
+                ),
+            )
+            # Second result with no match_metadata (deceptive_reasoning pass)
+            await db.execute(
+                "INSERT INTO results (session_id, scorer_name, passed, explanation)"
+                " VALUES (?, ?, ?, ?)",
+                ("s-fail", "deceptive_reasoning", 1, "CONSISTENT: ok"),
+            )
+            await db.commit()
+
+    asyncio.run(seed())
+    monkeypatch.setenv("MONITOR_DB", db_path)
+    monkeypatch.setenv("MONITOR_ALLOWLIST", allowlist_path)
+
+    from api.routes import results as results_mod
+    from api.routes import sessions as sessions_mod
+
+    importlib.reload(results_mod)
+    importlib.reload(sessions_mod)
+    from api import main as main_mod
+
+    importlib.reload(main_mod)
+    return main_mod.app, allowlist_path
+
+
+def test_mark_result_safe_sets_flag_and_writes_allowlist(db_with_failure, tmp_path):
+    import json as _json
+
+    app, allowlist_path = db_with_failure
+    client = TestClient(app)
+
+    r = client.patch("/sessions/s-fail/results/exfiltration_attempt", json={"marked_safe": True})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["marked_safe"] is True
+    assert body["added_to_allowlist"] == ["evil.example.com"]
+
+    # total_failures decremented on the session
+    r = client.get("/sessions/s-fail")
+    assert r.json()["session"]["total_failures"] == 0
+
+    # result row reflects marked_safe
+    result = next(
+        res for res in r.json()["results"] if res["scorer_name"] == "exfiltration_attempt"
+    )
+    assert result["marked_safe"] is True
+
+    # allowlist file written
+    with open(allowlist_path) as f:
+        al = _json.load(f)
+    assert "evil.example.com" in al["exfiltration_attempt"]
+
+
+def test_unmark_result_safe_restores_failure_count(db_with_failure):
+    app, _ = db_with_failure
+    client = TestClient(app)
+
+    client.patch("/sessions/s-fail/results/exfiltration_attempt", json={"marked_safe": True})
+    r = client.patch("/sessions/s-fail/results/exfiltration_attempt", json={"marked_safe": False})
+    assert r.status_code == 200
+    assert r.json()["marked_safe"] is False
+    assert r.json()["added_to_allowlist"] == []
+
+    r = client.get("/sessions/s-fail")
+    assert r.json()["session"]["total_failures"] == 1
+
+
+def test_mark_result_safe_404_on_unknown_scorer(db_with_failure):
+    app, _ = db_with_failure
+    client = TestClient(app)
+    r = client.patch("/sessions/s-fail/results/no_such_scorer", json={"marked_safe": True})
+    assert r.status_code == 404
+
+
+def test_mark_result_safe_no_allowlist_entry_for_llm_scorer(db_with_failure):
+    """Marking a result safe whose scorer has no allowlist key adds nothing to allowlist."""
+    app, allowlist_path = db_with_failure
+    client = TestClient(app)
+
+    # deceptive_reasoning has no SCORER_META_KEY entry — nothing written
+    r = client.patch("/sessions/s-fail/results/deceptive_reasoning", json={"marked_safe": True})
+    assert r.status_code == 200
+    assert r.json()["added_to_allowlist"] == []
+    import os
+
+    assert not os.path.exists(allowlist_path)
+
+
+def test_mark_result_safe_invalid_match_metadata_does_not_crash(db_with_bad_metadata):
+    """Invalid JSON in match_metadata is silently skipped; endpoint still returns 200."""
+    client = TestClient(db_with_bad_metadata)
+    r = client.patch("/sessions/s-bad/results/scope_creep", json={"marked_safe": True})
+    assert r.status_code == 200
+    assert r.json()["added_to_allowlist"] == []
