@@ -10,6 +10,7 @@ dependencies = [
     "groq>=1.2.0",
     "inspect-ai>=0.3.225",
     "uvicorn[standard]>=0.48.0",
+    "watchdog>=4.0.0",
 ]
 
 [build-system]
