@@ -35,3 +35,17 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
+
+      - id: frontend-lint
+        name: eslint
+        entry: bash -c 'cd frontend && pnpm lint'
+        language: system
+        files: ^frontend/src/.*\.(vue|ts)$
+        pass_filenames: false
+
+      - id: frontend-typecheck
+        name: vue-tsc
+        entry: bash -c 'cd frontend && pnpm typecheck'
+        language: system
+        files: ^frontend/src/.*\.(vue|ts)$
+        pass_filenames: false
