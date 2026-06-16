@@ -28,7 +28,7 @@ AllowlistData = dict[str, list[str]]
 # Which metadata key holds the allowlist-able value(s) for each scorer.
 # "scope_creep" uses a list key; all others are scalar strings.
 SCORER_META_KEY: dict[str, str] = {
-    "secret_leakage": "pattern",
+    "secret_leakage": "pattern",  # nosec B105 — not a password, it's a metadata key name
     "scope_creep": "violation_paths",  # list[str]
     "exfiltration_attempt": "host",
     # privilege_escalation is not allowlisted at the trigger level — the scorer
