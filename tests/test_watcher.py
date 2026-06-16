@@ -7,7 +7,14 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from monitor.watcher import _flush_ready, _SessionHandler
+from monitor.watcher import (
+    DEFAULT_DB,
+    _flush_ready,
+    _SessionHandler,
+    main,
+    parse_args,
+    watch,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -180,13 +187,11 @@ def test_watch_initializes_db_and_observer(tmp_path: Path) -> None:
         patch("monitor.watcher.init_db") as mock_init_db,
         patch("monitor.watcher.Path.mkdir") as mock_mkdir,
         patch("monitor.watcher.Observer") as mock_observer_class,
-        patch("monitor.watcher._flush_ready") as mock_flush,
+        patch("monitor.watcher._flush_ready"),
         patch("monitor.watcher.time.sleep", side_effect=[None, KeyboardInterrupt]),
     ):
         mock_observer = MagicMock()
         mock_observer_class.return_value = mock_observer
-
-        from monitor.watcher import watch
 
         watch(
             log_dir=str(tmp_path),
@@ -217,8 +222,6 @@ def test_watch_handles_keyboard_interrupt_cleanly(tmp_path: Path) -> None:
         mock_observer = MagicMock()
         mock_observer_class.return_value = mock_observer
 
-        from monitor.watcher import watch
-
         watch(
             log_dir=str(tmp_path),
             model="mockllm/model",
@@ -232,8 +235,6 @@ def test_watch_handles_keyboard_interrupt_cleanly(tmp_path: Path) -> None:
 
 def test_watch_logs_startup_info(tmp_path: Path, caplog) -> None:
     """watch() logs the startup configuration."""
-    import monitor.watcher as watcher_module
-
     with (
         patch("monitor.watcher.init_db"),
         patch("monitor.watcher.Path.mkdir"),
@@ -249,7 +250,7 @@ def test_watch_logs_startup_info(tmp_path: Path, caplog) -> None:
         logger.setLevel(logging.INFO)
         caplog.set_level(logging.INFO, logger="monitor.watcher")
 
-        watcher_module.watch(
+        watch(
             log_dir=str(tmp_path),
             model="groq/llama-3.3-70b-versatile",
             db="custom.db",
@@ -272,8 +273,6 @@ def test_watch_logs_startup_info(tmp_path: Path, caplog) -> None:
 
 def test_parse_args_required_args() -> None:
     """parse_args() requires --log-dir and --model."""
-    from monitor.watcher import parse_args
-
     with patch("sys.argv", ["watcher", "--log-dir", "/tmp/logs", "--model", "groq/llama"]):
         args = parse_args()
         assert args.log_dir == "/tmp/logs"
@@ -282,8 +281,6 @@ def test_parse_args_required_args() -> None:
 
 def test_parse_args_optional_defaults() -> None:
     """parse_args() uses defaults for optional args."""
-    from monitor.watcher import parse_args, DEFAULT_DB
-
     with patch(
         "sys.argv",
         ["watcher", "--log-dir", "/tmp/logs", "--model", "mockllm/model"],
@@ -297,8 +294,6 @@ def test_parse_args_optional_defaults() -> None:
 
 def test_parse_args_custom_values() -> None:
     """parse_args() accepts custom values for all options."""
-    from monitor.watcher import parse_args
-
     with patch(
         "sys.argv",
         [
@@ -330,8 +325,6 @@ def test_parse_args_custom_values() -> None:
 
 def test_parse_args_cooldown_is_float() -> None:
     """--cooldown is parsed as float."""
-    from monitor.watcher import parse_args
-
     with patch("sys.argv", ["watcher", "--log-dir", "/x", "--model", "m", "--cooldown", "7.5"]):
         args = parse_args()
         assert args.cooldown == 7.5
@@ -359,8 +352,6 @@ def test_main_configures_logging_and_calls_watch(tmp_path: Path) -> None:
             inspect_log_dir="logs/",
         )
 
-        from monitor.watcher import main
-
         main()
 
         mock_logging.assert_called_once()
@@ -384,8 +375,6 @@ def test_main_logging_format() -> None:
         mock_parse.return_value = MagicMock(
             log_dir="/x", model="m", db="d", cooldown=1.0, allowed_hosts=[], inspect_log_dir="l/"
         )
-
-        from monitor.watcher import main
 
         main()
 
