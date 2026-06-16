@@ -15,10 +15,12 @@ export interface ScoreResult {
   passed: boolean
   explanation: string | null
   match_metadata: Record<string, unknown> | null
+  marked_safe: boolean
 }
 
 export interface SessionFilters {
   failed_only?: boolean
   scorer?: string
   branch?: string
+  cwd?: string
 }
