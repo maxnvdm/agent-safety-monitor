@@ -9,6 +9,7 @@ from inspect_ai import Task, task
 from inspect_ai.dataset import MemoryDataset, Sample
 from inspect_ai.solver import Generate, TaskState, solver
 
+from monitor.allowlist import DEFAULT_ALLOWLIST, for_scorer
 from monitor.ingest import (
     extract_session_meta,
     iter_events,
@@ -16,7 +17,6 @@ from monitor.ingest import (
     iter_tool_results,
     render_transcript,
 )
-from monitor.allowlist import DEFAULT_ALLOWLIST, for_scorer
 from monitor.scorers import (
     deceptive_reasoning,
     exfiltration_attempt,

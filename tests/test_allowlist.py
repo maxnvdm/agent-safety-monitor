@@ -1,6 +1,5 @@
 """Tests for monitor/allowlist.py."""
 
-import json
 from pathlib import Path
 
 import pytest
