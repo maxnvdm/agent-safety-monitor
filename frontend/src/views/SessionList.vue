@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { fetchSessions } from '../api'
 import type { Session, SessionFilters } from '../api/types'
@@ -8,6 +8,9 @@ const router = useRouter()
 const sessions = ref<Session[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+
+const SCROLL_KEY = 'sessionList:scrollY'
+let isInitialLoad = true
 
 const SCORER_OPTIONS = [
   { value: '', label: 'Any scorer' },
@@ -22,6 +25,15 @@ const SCORER_OPTIONS = [
 const failedOnly = ref(false)
 const scorerFilter = ref('')
 const branchFilter = ref('')
+const cwdFilter = ref('')
+
+// Computed unique project paths from sessions
+const projectOptions = computed(() => {
+  const paths = new Set(
+    sessions.value.map(s => s.cwd).filter((c): c is string => c !== null)
+  )
+  return Array.from(paths).sort()
+})
 
 async function load() {
   loading.value = true
@@ -31,6 +43,7 @@ async function load() {
     if (failedOnly.value) filters.failed_only = true
     if (scorerFilter.value) filters.scorer = scorerFilter.value
     if (branchFilter.value.trim()) filters.branch = branchFilter.value.trim()
+    if (cwdFilter.value) filters.cwd = cwdFilter.value
     sessions.value = await fetchSessions(filters)
   } catch (e) {
     error.value = String(e)
@@ -40,7 +53,23 @@ async function load() {
 }
 
 onMounted(load)
-watch([failedOnly, scorerFilter, branchFilter], load)
+onBeforeUnmount(() => {
+  sessionStorage.setItem(SCROLL_KEY, String(window.scrollY))
+})
+
+watch(loading, async (isLoading) => {
+  if (!isLoading && isInitialLoad) {
+    isInitialLoad = false
+    const saved = sessionStorage.getItem(SCROLL_KEY)
+    if (saved) {
+      await nextTick()
+      window.scrollTo(0, parseInt(saved, 10))
+      sessionStorage.removeItem(SCROLL_KEY)
+    }
+  }
+})
+
+watch([failedOnly, scorerFilter, branchFilter, cwdFilter], load)
 
 function open(id: string) {
   router.push(`/sessions/${id}`)
@@ -68,6 +97,13 @@ function formatDate(iso: string | null) {
         <span class="filter-label">Scorer</span>
         <select v-model="scorerFilter">
           <option v-for="o in SCORER_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</option>
+        </select>
+      </label>
+      <label class="filter-item">
+        <span class="filter-label">Project</span>
+        <select v-model="cwdFilter" style="width:16rem">
+          <option value="">All projects</option>
+          <option v-for="p in projectOptions" :key="p" :value="p">{{ p }}</option>
         </select>
       </label>
       <label class="filter-item">

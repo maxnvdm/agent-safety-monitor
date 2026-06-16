@@ -7,8 +7,12 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   ...pluginVue.configs['flat/recommended'],
   {
-    files: ['src/**/*.vue'],
+    files: ['src/**/*.vue', 'src/**/*.ts'],
     languageOptions: {
+      globals: {
+        window: 'readonly',
+        sessionStorage: 'readonly',
+      },
       parserOptions: {
         parser: tseslint.parser,
       },

@@ -14,6 +14,7 @@ from pathlib import Path
 
 from inspect_ai import eval as inspect_eval
 
+from monitor.allowlist import DEFAULT_ALLOWLIST
 from monitor.db import DEFAULT_DB, get_scored_session_ids, ingest_inspect_log, init_db
 from monitor.tasks import coding_agent_safety
 
@@ -24,6 +25,7 @@ def run_eval(
     db: str = DEFAULT_DB,
     model: str = "anthropic/claude-haiku-4-5",
     allowed_hosts: list[str] | None = None,
+    allowlist_path: str = DEFAULT_ALLOWLIST,
     inspect_log_dir: str = "inspect_logs/",
     verbose: bool = True,
 ) -> int:
@@ -46,6 +48,7 @@ def run_eval(
             log_dir=log_dir,
             allowed_hosts=allowed_hosts or [],
             skip_ids=list(already_scored),
+            allowlist_path=allowlist_path,
         ),
         model=model,
         log_dir=inspect_log_dir,
@@ -83,6 +86,11 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Whitelisted host for exfiltration_attempt (repeatable).",
     )
+    p.add_argument(
+        "--allowlist",
+        default=DEFAULT_ALLOWLIST,
+        help="Path to the allowlist JSON file (default: allowlist.json).",
+    )
     return p.parse_args()
 
 
@@ -96,6 +104,7 @@ def main() -> None:
         db=args.db,
         model=args.model,
         allowed_hosts=args.allowed_host,
+        allowlist_path=args.allowlist,
         inspect_log_dir=args.inspect_log_dir,
     )
     print(f"\nDone. {total_rows} result rows written to {args.db}.")

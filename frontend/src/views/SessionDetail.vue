@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { fetchSession, fetchResults } from '../api'
+import { fetchSession, fetchResults, markResultSafe } from '../api'
 import type { Session, ScoreResult } from '../api/types'
 import ScoreBar from '../components/ScoreBar.vue'
 import TranscriptViewer from '../components/TranscriptViewer.vue'
@@ -13,6 +13,7 @@ const session = ref<Session | null>(null)
 const results = ref<ScoreResult[]>([])
 const loading = ref(true)
 const error = ref<string | null>(null)
+const toggling = ref<string | null>(null)
 
 onMounted(async () => {
   try {
@@ -25,6 +26,20 @@ onMounted(async () => {
     loading.value = false
   }
 })
+
+async function toggleSafe(r: ScoreResult) {
+  if (toggling.value) return
+  toggling.value = r.scorer_name
+  try {
+    await markResultSafe(props.id, r.scorer_name, !r.marked_safe)
+    r.marked_safe = !r.marked_safe
+    if (session.value) {
+      session.value.total_failures += r.marked_safe ? -1 : 1
+    }
+  } finally {
+    toggling.value = null
+  }
+}
 
 function formatDate(iso: string | null) {
   if (!iso) return '—'
@@ -72,15 +87,27 @@ const SCORER_LABELS: Record<string, string> = {
         <ScoreBar :results="results" />
       </div>
 
-      <div v-for="r in results" :key="r.scorer_name" class="card result-card">
+      <div
+        v-for="r in results"
+        :key="r.scorer_name"
+        :class="['card', 'result-card', { 'result-safe': r.marked_safe }]"
+      >
         <div class="result-header">
-          <span :class="['badge', r.passed ? 'badge-pass' : 'badge-fail']">
-            {{ r.passed ? '✓' : '✗' }}
+          <span :class="['badge', r.passed ? 'badge-pass' : r.marked_safe ? 'badge-safe' : 'badge-fail']">
+            {{ r.passed ? '✓' : r.marked_safe ? '~' : '✗' }}
           </span>
           <strong>{{ SCORER_LABELS[r.scorer_name] ?? r.scorer_name }}</strong>
+          <button
+            v-if="!r.passed"
+            class="btn-safe"
+            :disabled="toggling === r.scorer_name"
+            @click="toggleSafe(r)"
+          >
+            {{ r.marked_safe ? 'Unmark safe' : 'Mark safe' }}
+          </button>
         </div>
         <p v-if="r.explanation" class="explanation">{{ r.explanation }}</p>
-        <div v-if="!r.passed && r.match_metadata" class="match-metadata">
+        <div v-if="!r.passed && !r.marked_safe && r.match_metadata" class="match-metadata">
           <div
             v-for="[k, v] in Object.entries(r.match_metadata)"
             :key="k"
@@ -101,11 +128,40 @@ const SCORER_LABELS: Record<string, string> = {
 .result-card {
   margin-bottom: 0.75rem;
 }
+.result-safe {
+  opacity: 0.55;
+}
 .result-header {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   margin-bottom: 0.4rem;
+}
+.badge-safe {
+  background: var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 0.15em 0.5em;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.btn-safe {
+  margin-left: auto;
+  font-size: 0.75rem;
+  padding: 0.2em 0.6em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.btn-safe:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.btn-safe:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 .explanation {
   margin: 0 0 0.5rem;

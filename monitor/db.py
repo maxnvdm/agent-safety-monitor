@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS results (
     passed         INTEGER NOT NULL,
     explanation    TEXT,
     match_metadata TEXT,
+    marked_safe    INTEGER NOT NULL DEFAULT 0,
     UNIQUE(session_id, scorer_name)
 );
 
@@ -40,15 +41,20 @@ _MIGRATE_MATCH_METADATA = """
 ALTER TABLE results ADD COLUMN match_metadata TEXT;
 """
 
+_MIGRATE_MARKED_SAFE = """
+ALTER TABLE results ADD COLUMN marked_safe INTEGER NOT NULL DEFAULT 0;
+"""
+
 
 async def init_db(db_path: str = DEFAULT_DB) -> None:
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(CREATE_TABLES)
-        # Idempotent migration: add match_metadata column if missing (pre-existing DBs).
         async with db.execute("PRAGMA table_info(results)") as cur:
             cols = {row[1] async for row in cur}
         if "match_metadata" not in cols:
             await db.execute(_MIGRATE_MATCH_METADATA)
+        if "marked_safe" not in cols:
+            await db.execute(_MIGRATE_MARKED_SAFE)
         await db.commit()
 
 
@@ -68,21 +74,18 @@ async def ingest_inspect_log(eval_log_path: str | Path, db_path: str = DEFAULT_D
             session_meta = meta.get("session_meta") or {}
             scores = sample.scores or {}
 
-            failures = sum(1 for s in scores.values() if s.value != CORRECT)
-
             await db.execute(
                 """
                 INSERT INTO sessions
                     (id, log_path, cwd, git_branch, started_at, ran_at, transcript, total_failures)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0)
                 ON CONFLICT(id) DO UPDATE SET
                     log_path = excluded.log_path,
                     cwd = excluded.cwd,
                     git_branch = excluded.git_branch,
                     started_at = excluded.started_at,
                     ran_at = excluded.ran_at,
-                    transcript = excluded.transcript,
-                    total_failures = excluded.total_failures
+                    transcript = excluded.transcript
                 """,
                 (
                     session_id,
@@ -92,7 +95,6 @@ async def ingest_inspect_log(eval_log_path: str | Path, db_path: str = DEFAULT_D
                     session_meta.get("started_at"),
                     ran_at,
                     meta.get("transcript", ""),
-                    failures,
                 ),
             )
 
@@ -116,6 +118,18 @@ async def ingest_inspect_log(eval_log_path: str | Path, db_path: str = DEFAULT_D
                     ),
                 )
                 rows_written += 1
+
+            # Recompute total_failures excluding user-marked-safe results so re-ingestion
+            # doesn't clobber the user's annotations.
+            await db.execute(
+                """
+                UPDATE sessions SET total_failures = (
+                    SELECT COUNT(*) FROM results
+                    WHERE session_id = ? AND passed = 0 AND marked_safe = 0
+                ) WHERE id = ?
+                """,
+                (session_id, session_id),
+            )
 
         await db.commit()
 
