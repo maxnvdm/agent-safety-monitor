@@ -1,0 +1,60 @@
+name: Agent-ready task
+description: Define bounded work that a human or coding agent can execute and hand off.
+title: "[Task] "
+body:
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: State the observable outcome, not just an activity.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and durable references
+      description: Explain why this matters and link relevant docs, decisions, issues, or code.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: In scope
+      description: List the systems, files, or behavior that may change.
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Name important boundaries and tempting adjacent work.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide a checkable list of conditions for completion.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: List commands, inspections, or human checks and the expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and permissions
+      description: Identify secrets, production effects, external writes, destructive actions, costs, or approval checkpoints.
+  - type: checkboxes
+    id: ready
+    attributes:
+      label: Ready for execution
+      options:
+        - label: The task is bounded enough for one owner and has no hidden required chat context.
+          required: true
+        - label: Durable references are linked or the issue explicitly asks for them to be created.
+          required: true
