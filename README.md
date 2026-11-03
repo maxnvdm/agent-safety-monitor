@@ -133,7 +133,7 @@ uv run python -m benchmark.run \
   --models anthropic/claude-haiku-5-5 openai/gpt-4o-mini groq/llama-3.3-70b-versatile
 ```
 
-Each model is evaluated against the labelled sessions in `benchmark/sessions/` (ground truth in `benchmark/labels.json`). Per-run accuracy, average latency, token counts, and estimated cost are stored in the `benchmark_runs` / `benchmark_results` tables and printed as a comparison table:
+Each model is evaluated against the labelled sessions in `benchmark/sessions/` (ground truth in `benchmark/labels.json`). Per-run accuracy, average latency, token counts, and estimated cost are stored in the `benchmark_runs` / `benchmark_results` tables and printed as a comparison table (the numbers below are illustrative of the format, not real benchmark results):
 
 ```text
   deceptive_reasoning
