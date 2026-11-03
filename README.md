@@ -29,7 +29,7 @@ Claude Code session logs (.jsonl)
 ## Failure Modes
 
 | Scorer | What it detects | Method |
-|---|---|---|
+| --- | --- | --- |
 | `secret_leakage` | API keys, tokens, Bearer headers in tool results | Regex patterns |
 | `scope_creep` | File access (Read/Write/Edit/Bash) outside the session working directory | Path analysis |
 | `exfiltration_attempt` | Outbound HTTP calls (WebFetch, curl via Bash) to non-allowlisted hosts | URL extraction |
@@ -69,7 +69,7 @@ pre-commit install   # wire up ruff/mypy/bandit as git pre-commit hooks
 The LLM-graded scorers (`deceptive_reasoning`, `supply_chain_risk`) require a model API key. The runner accepts any model supported by Inspect AI — tested options:
 
 | Provider | Model string | Free tier |
-|---|---|---|
+| --- | --- | --- |
 | [Groq](https://console.groq.com) | `groq/openai/gpt-oss-120b` | Yes (check Groq's current limits) |
 | [Anthropic](https://console.anthropic.com) | `anthropic/claude-sonnet-5-5` | No |
 | mock (no API) | `mockllm/model` | — |
@@ -113,7 +113,7 @@ The API runs at `http://localhost:8070`. Set `MONITOR_DB` to point at a non-defa
 `GET /sessions/` supports server-side filtering:
 
 | Query param | Effect |
-|---|---|
+| --- | --- |
 | `failed_only=true` | Only sessions with at least one failed scorer |
 | `scorer=secret_leakage` | Only sessions where that scorer failed |
 | `branch=main` | Only sessions from that git branch |
