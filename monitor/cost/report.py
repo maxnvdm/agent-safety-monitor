@@ -88,8 +88,9 @@ def render(
             f"  Claude Code's own total was {usd(detail['reported_usd'])} when it last wrote one; the transcript "
             f"accounts for {usd(detail['logged_usd_at_report'])} of that. "
             + (
-                f"The difference ({usd(detail['unlogged_usd'])}) is requests that never appear in the "
-                "transcript (WebFetch/WebSearch summarising, title generation, ...)."
+                f"The difference ({usd(detail['unlogged_usd'])}) may be requests that never appear in the "
+                "transcript (WebFetch/WebSearch summarising, title generation, ...) or a pricing "
+                "mismatch (check the price table and any unknown-model warning)."
                 if detail["unlogged_usd"] >= 0
                 else f"The transcript is {usd(-detail['unlogged_usd'])} HIGHER than Claude Code's figure: "
                 "check the price table (MONITOR_PRICES) and the logged models."
