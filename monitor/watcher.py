@@ -25,6 +25,7 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from monitor.db import DEFAULT_DB, init_db
+from monitor.paths import default_inspect_logs
 from monitor.run import run_eval
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ def watch(
     db: str = DEFAULT_DB,
     allowed_hosts: list[str] | None = None,
     cooldown: float = DEFAULT_COOLDOWN,
-    inspect_log_dir: str = "inspect_logs/watch/",
+    inspect_log_dir: str = default_inspect_logs("watch"),
     poll_interval: float = DEFAULT_POLL,
 ) -> None:
     """Watch log_dir and ingest each .jsonl file after it stops being written to."""
@@ -165,7 +166,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--inspect-log-dir",
-        default="inspect_logs/watch/",
+        default=default_inspect_logs("watch"),
         help="Where Inspect writes its .eval logs.",
     )
     return p.parse_args()

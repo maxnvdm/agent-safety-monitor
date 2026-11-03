@@ -9,8 +9,10 @@ from typing import Any
 import aiosqlite
 from fastapi import APIRouter
 
+from monitor.paths import default_db
+
 router = APIRouter()
-DB = os.getenv("MONITOR_DB", "monitor.db")
+DB = os.getenv("MONITOR_DB") or default_db()
 
 
 def _parse_result_row(row: aiosqlite.Row) -> dict[str, Any]:

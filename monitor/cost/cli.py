@@ -71,7 +71,9 @@ def main(argv: list[str] | None = None) -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     r = sub.add_parser("report", help="ingest logs and print where the money went")
     r.add_argument("paths", nargs="+", help="session .jsonl files or directories of them")
-    r.add_argument("--db", default=store.DEFAULT_DB, help="SQLite file (default: monitor.db)")
+    r.add_argument(
+        "--db", default=store.DEFAULT_DB, help=f"SQLite file (default: {store.DEFAULT_DB})"
+    )
     r.add_argument(
         "--session", help="report on one session id (default: everything ingested from PATHS)"
     )

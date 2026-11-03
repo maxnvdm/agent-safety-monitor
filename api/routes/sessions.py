@@ -11,9 +11,10 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from monitor.allowlist import DEFAULT_ALLOWLIST, add_entries, entries_from_match_metadata
+from monitor.paths import default_db
 
 router = APIRouter()
-DB = os.getenv("MONITOR_DB", "monitor.db")
+DB = os.getenv("MONITOR_DB") or default_db()
 ALLOWLIST = os.getenv("MONITOR_ALLOWLIST", DEFAULT_ALLOWLIST)
 
 

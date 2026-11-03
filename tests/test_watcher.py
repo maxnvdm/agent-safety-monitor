@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from monitor.paths import default_inspect_logs
 from monitor.watcher import (
     DEFAULT_DB,
     _flush_ready,
@@ -289,7 +290,7 @@ def test_parse_args_optional_defaults() -> None:
         assert args.db == DEFAULT_DB
         assert args.cooldown == 30.0
         assert args.allowed_hosts == []
-        assert args.inspect_log_dir == "inspect_logs/watch/"
+        assert args.inspect_log_dir == default_inspect_logs("watch")
 
 
 def test_parse_args_custom_values() -> None:

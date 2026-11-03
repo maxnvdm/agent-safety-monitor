@@ -8,11 +8,20 @@ __pycache__/
 .mypy_cache/
 
 
-# Project data — never commit real user logs or scoring DBs
+# Project data — never commit real user logs or scoring DBs. Runtime data lives outside the checkout
+# by default (see monitor/paths.py); these patterns are the safety net if it ever lands in here.
 logs/
 inspect_logs/
-monitor.db
-monitor.db-*
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+allowlist.json
+# Real session logs. The committed fixtures are the only exceptions.
+*.jsonl
+!tests/fixtures/*.jsonl
+!samples/*.jsonl
+!benchmark/sessions/*.jsonl
 
 # Node / frontend
 node_modules/

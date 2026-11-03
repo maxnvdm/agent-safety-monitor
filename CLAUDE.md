@@ -40,7 +40,7 @@ uv run python -m monitor.cost report ~/.claude/projects/<project>/ --group-by ac
 # Refresh the vendored price table from LiteLLM
 uv run python scripts/update_model_prices.py
 
-# Start the API (default db: monitor.db, override with MONITOR_DB env var)
+# Start the API (default db: $MONITOR_HOME/monitor.db, override with MONITOR_DB env var)
 uv run uvicorn api.main:app --reload --port 8070
 
 # Frontend: install deps
@@ -92,6 +92,8 @@ The `PATCH /sessions/{id}/results/{scorer_name}` endpoint accepts `{"marked_safe
 **`tests/`** — pytest with `asyncio_mode = "auto"`. Fixtures in `tests/fixtures/` are real Claude Code JSONL files used by integration tests. `test_api.py` seeds a real SQLite DB via an actual Inspect eval run against fixtures, then hits the FastAPI app through `TestClient`.
 
 ## Key constraints
+
+- Runtime data (database, allowlist, Inspect logs) defaults to a per-user directory (`monitor/paths.py`: `$MONITOR_HOME`, else `$XDG_DATA_HOME/agent-safety-monitor`, else `~/.local/share/agent-safety-monitor`), never the repo checkout. This repo is public and the data is private: `scripts/check_no_private_data.py` (CI + pre-commit) fails if a database, allowlist, env file, or a real-looking session log is tracked. Never commit real transcripts; fixtures must use synthetic paths such as `/home/dev/project`.
 
 - Cost attribution: totals are measured, per-item token splits are estimates (size-weighted). Never sum a tool's `own_usd` with its `roundtrip_usd`. When editing `monitor/cost/`, keep `attributed_usd == total_usd` true; scripted edits there must assert their replacements applied.
 

@@ -16,6 +16,7 @@ from inspect_ai import eval as inspect_eval
 
 from monitor.allowlist import DEFAULT_ALLOWLIST
 from monitor.db import DEFAULT_DB, get_scored_session_ids, ingest_inspect_log, init_db
+from monitor.paths import default_inspect_logs
 from monitor.tasks import coding_agent_safety
 
 
@@ -26,7 +27,7 @@ def run_eval(
     model: str = "anthropic/claude-haiku-4-5",
     allowed_hosts: list[str] | None = None,
     allowlist_path: str = DEFAULT_ALLOWLIST,
-    inspect_log_dir: str = "inspect_logs/",
+    inspect_log_dir: str = default_inspect_logs(),
     verbose: bool = True,
 ) -> int:
     """Eval log_dir against all safety scorers and persist results.
@@ -71,7 +72,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--log-dir", default="logs/", help="Directory of Claude Code .jsonl logs.")
     p.add_argument(
         "--inspect-log-dir",
-        default="inspect_logs/",
+        default=default_inspect_logs(),
         help="Where Inspect writes its .eval logs.",
     )
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path.")
@@ -89,7 +90,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--allowlist",
         default=DEFAULT_ALLOWLIST,
-        help="Path to the allowlist JSON file (default: allowlist.json).",
+        help=f"Path to the allowlist JSON file (default: {DEFAULT_ALLOWLIST}).",
     )
     return p.parse_args()
 

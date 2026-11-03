@@ -18,8 +18,8 @@ uv run python -m benchmark.run --models mockllm/model
 uv run python -m benchmark.run --report-only
 ```
 
-Flags: `--db` (SQLite path, defaults to `monitor.db`), `--inspect-log-dir`
-(where Inspect writes its `.eval` logs, defaults to `inspect_logs/benchmark/`).
+Flags: `--db` (SQLite path, defaults to `monitor.db` in the per-user data directory), `--inspect-log-dir`
+(where Inspect writes its `.eval` logs, defaults to `inspect_logs/benchmark/` in the per-user data directory).
 
 Each model needs its provider API key set (e.g. `ANTHROPIC_API_KEY`,
 `OPENAI_API_KEY`, `GROQ_API_KEY`) — same as `monitor/run.py`. A model that

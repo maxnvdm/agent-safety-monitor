@@ -8,8 +8,9 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from monitor.cost import store
+from monitor.paths import default_db
 
-DB = os.getenv("MONITOR_DB", "monitor.db")
+DB = os.getenv("MONITOR_DB") or default_db()
 _ready: set[str] = set()
 
 

@@ -9,7 +9,9 @@ import aiosqlite
 from inspect_ai.log import read_eval_log
 from inspect_ai.scorer import CORRECT
 
-DEFAULT_DB = "monitor.db"
+from monitor.paths import default_db, ensure_parent
+
+DEFAULT_DB = default_db()
 
 CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -47,6 +49,7 @@ ALTER TABLE results ADD COLUMN marked_safe INTEGER NOT NULL DEFAULT 0;
 
 
 async def init_db(db_path: str = DEFAULT_DB) -> None:
+    ensure_parent(db_path)
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(CREATE_TABLES)
         async with db.execute("PRAGMA table_info(results)") as cur:

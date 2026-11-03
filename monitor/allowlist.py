@@ -3,7 +3,7 @@
 JSON structure (allowlist.json):
 {
   "secret_leakage":       ["Anthropic API key (sk-ant-)", ...],
-  "scope_creep":          ["/home/max/.config", ...],
+  "scope_creep":          ["/home/me/.config", ...],
   "exfiltration_attempt": ["github.com", "pypi.org", ...],
   "privilege_escalation": ["chmod", ...]
 }
@@ -21,7 +21,9 @@ import json
 from pathlib import Path
 from typing import cast
 
-DEFAULT_ALLOWLIST = "allowlist.json"
+from monitor.paths import default_allowlist, ensure_parent
+
+DEFAULT_ALLOWLIST = default_allowlist()
 
 AllowlistData = dict[str, list[str]]
 
@@ -45,6 +47,7 @@ def load(path: str | Path = DEFAULT_ALLOWLIST) -> AllowlistData:
 
 
 def save(data: AllowlistData, path: str | Path = DEFAULT_ALLOWLIST) -> None:
+    ensure_parent(path)
     p = Path(path)
     with p.open("w") as f:
         json.dump(data, f, indent=2)

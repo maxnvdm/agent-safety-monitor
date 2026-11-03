@@ -14,8 +14,9 @@ from monitor.cost.actions import classify
 from monitor.cost.attribute import SessionCosts, attribute
 from monitor.cost.findings import Thresholds, detect
 from monitor.cost.parse import ParsedSession, parse_session
+from monitor.paths import default_db, ensure_parent
 
-DEFAULT_DB = "monitor.db"
+DEFAULT_DB = default_db()
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS cost_sessions (
@@ -68,6 +69,7 @@ _PER_SESSION = (
 
 
 async def init_cost_tables(db_path: str = DEFAULT_DB) -> None:
+    ensure_parent(db_path)
     async with aiosqlite.connect(db_path) as db:
         await db.executescript(SCHEMA)
         await db.commit()

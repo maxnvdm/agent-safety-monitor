@@ -92,7 +92,7 @@ Point the runner at a directory of Claude Code `.jsonl` session logs:
 uv run python -m monitor.run --log-dir logs/ --model groq/openai/gpt-oss-120b
 ```
 
-Results are written to `monitor.db`. Use `--db` to specify a different path, `--inspect-log-dir` for Inspect's own logs.
+Results are written to `monitor.db` in your per-user data directory (see [Privacy model](#privacy-model)), not the working directory. Use `--db` to specify a different path, `--inspect-log-dir` for Inspect's own logs.
 
 Re-running against the same log directory is cheap: sessions that already have results in the database are skipped before the eval starts, so no LLM calls are repeated for them.
 
@@ -108,7 +108,7 @@ uv run python -m monitor.run --log-dir samples/ --model groq/openai/gpt-oss-120b
 uv run uvicorn api.main:app --reload --port 8070
 ```
 
-The API runs at `http://localhost:8070`. Set `MONITOR_DB` to point at a non-default database path.
+The API runs at `http://localhost:8070`. Set `MONITOR_DB` to point at a non-default database path (the default is under `MONITOR_HOME`, see [Privacy model](#privacy-model)).
 
 `GET /sessions/` supports server-side filtering:
 
@@ -180,6 +180,15 @@ How to trust the numbers:
 - **Privacy:** stored prompt previews and command descriptions are truncated and have obvious secrets redacted (the same patterns the `secret_leakage` scorer uses). Use `--no-preview` to store no prompt text at all.
 - **Not yet validated against real logs:** subagent logs (read from `<session>/subagents/agent-*.jsonl`) and context compaction are covered by synthetic tests only.
 
+## Privacy model
+
+This repository is public, but it analyses your private Claude Code transcripts, so the data lives **outside the checkout**:
+
+- By default the database, allowlist and Inspect logs go to `$MONITOR_HOME`, else `$XDG_DATA_HOME/agent-safety-monitor`, else `~/.local/share/agent-safety-monitor`. Override any single path with its flag (`--db`, `--allowlist`, `--inspect-log-dir`) or `MONITOR_DB` / `MONITOR_ALLOWLIST`.
+- The database is private data: it holds rendered transcripts, prompt previews and redacted command descriptions. Treat it like the transcripts themselves.
+- `.gitignore` blocks databases, allowlists and `*.jsonl` session logs (except the synthetic fixtures), and `scripts/check_no_private_data.py` runs in CI and as a pre-commit hook. It fails if a database, allowlist, env file or a real-looking session log is tracked, or if a tracked file contains a real-looking home directory. Fixtures must use synthetic paths such as `/home/dev/project`.
+- The API has no authentication. Keep it on localhost, or behind a tunnel you trust.
+
 ## Auto-ingestion: Watching a Log Directory
 
 Running `monitor.run` manually is fine for occasional audits. For continuous monitoring, the watcher process ingests sessions automatically as they appear:
@@ -196,7 +205,7 @@ The watcher monitors the directory for new or modified `.jsonl` files. After a f
 Options:
   --log-dir      Directory to watch (required)
   --model        Model for LLM-graded scorers (required)
-  --db           SQLite database path (default: monitor.db)
+  --db           SQLite database path (default: <data dir>/monitor.db)
   --cooldown     Inactivity seconds before ingesting (default: 30)
   --allowed-host Allowlisted host for exfiltration scorer (repeatable)
 ```
