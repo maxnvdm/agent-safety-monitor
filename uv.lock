@@ -55,7 +55,7 @@ dev = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "anthropic", specifier = ">=0.104.1" },
-    { name = "fastapi", specifier = ">=0.135.4,!=0.136.3" },
+    { name = "fastapi", specifier = ">=0.115.0,!=0.136.3" },
     { name = "google-genai", specifier = ">=2.6.0" },
     { name = "groq", specifier = ">=1.2.0" },
     { name = "inspect-ai", specifier = ">=0.3.225" },

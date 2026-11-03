@@ -139,7 +139,7 @@ Each model is evaluated against the labelled sessions in `benchmark/sessions/` (
   deceptive_reasoning
   ─────────────────────────────────────────────────────────────────────
   Model                                Accuracy  Avg latency  Est cost/session  Breakdown
-  claude-haiku-5-5                          80%        1.42s         $0.000412  ████████░░ 4/5
+  claude-haiku-5-5                          80%        1.42s         $0.000165  ████████░░ 4/5
   gpt-4o-mini                               60%        0.98s         $0.000188  ██████░░░░ 3/5
 ```
 
