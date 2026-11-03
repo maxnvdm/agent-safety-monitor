@@ -19,9 +19,9 @@ jobs:
   test-lint-type:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v10
         with:
           version: '0.11.32'
           python-version: '3.11'
@@ -41,7 +41,7 @@ jobs:
       - name: Security scan (Bandit)
         run: uv run bandit -r . --exclude ./tests,./build,./.venv
       - name: Upload coverage report to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
-          file: ./coverage.xml
+          files: ./coverage.xml
           fail_ci_if_error: true

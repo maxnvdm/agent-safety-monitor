@@ -44,7 +44,7 @@ When a scorer fails a session, it records the specific evidence (the matched sec
 The exfiltration scorer accepts an allowlist of trusted hosts via `--allowed-host` (repeatable). Hosts and their subdomains are permitted:
 
 ```bash
-uv run python -m monitor.run --log-dir logs/ --model groq/llama-3.3-70b-versatile \
+uv run python -m monitor.run --log-dir logs/ --model groq/openai/gpt-oss-120b \
   --allowed-host api.github.com \
   --allowed-host pypi.org
 ```
@@ -70,9 +70,11 @@ The LLM-graded scorers (`deceptive_reasoning`, `supply_chain_risk`) require a mo
 
 | Provider | Model string | Free tier |
 |---|---|---|
-| [Groq](https://console.groq.com) | `groq/llama-3.3-70b-versatile` | Yes |
+| [Groq](https://console.groq.com) | `groq/openai/gpt-oss-120b` | Yes (check Groq's current limits) |
 | [Anthropic](https://console.anthropic.com) | `anthropic/claude-sonnet-5-5` | No |
 | mock (no API) | `mockllm/model` | — |
+
+> Groq shut down `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` on 2026-08-16 ([deprecations](https://console.groq.com/docs/deprecations)); `openai/gpt-oss-120b` is the replacement Groq recommends. It has not been re-benchmarked in this repo.
 
 Set your key in `.env.local` (gitignored):
 
@@ -87,7 +89,7 @@ Or use [varlock](https://varlock.dev) for encrypted local secrets — a `.env.sc
 Point the runner at a directory of Claude Code `.jsonl` session logs:
 
 ```bash
-uv run python -m monitor.run --log-dir logs/ --model groq/llama-3.3-70b-versatile
+uv run python -m monitor.run --log-dir logs/ --model groq/openai/gpt-oss-120b
 ```
 
 Results are written to `monitor.db`. Use `--db` to specify a different path, `--inspect-log-dir` for Inspect's own logs.
@@ -97,7 +99,7 @@ Re-running against the same log directory is cheap: sessions that already have r
 To try it with the included sample logs (no real logs needed):
 
 ```bash
-uv run python -m monitor.run --log-dir samples/ --model groq/llama-3.3-70b-versatile
+uv run python -m monitor.run --log-dir samples/ --model groq/openai/gpt-oss-120b
 ```
 
 ### 3. Start the API
@@ -130,7 +132,7 @@ The two LLM-graded scorers are only as good as the model behind them. The `bench
 
 ```bash
 uv run python -m benchmark.run \
-  --models anthropic/claude-haiku-5-5 openai/gpt-4o-mini groq/llama-3.3-70b-versatile
+  --models anthropic/claude-haiku-5-5 openai/gpt-4o-mini groq/openai/gpt-oss-120b
 ```
 
 Each model is evaluated against the labelled sessions in `benchmark/sessions/` (ground truth in `benchmark/labels.json`). Per-run accuracy, average latency, token counts, and estimated cost are stored in the `benchmark_runs` / `benchmark_results` tables and printed as a comparison table (the numbers below are illustrative of the format, not real benchmark results):
@@ -152,7 +154,7 @@ Running `monitor.run` manually is fine for occasional audits. For continuous mon
 ```bash
 uv run python -m monitor.watcher \
   --log-dir ~/.claude/projects/my-project/ \
-  --model groq/llama-3.3-70b-versatile
+  --model groq/openai/gpt-oss-120b
 ```
 
 The watcher monitors the directory for new or modified `.jsonl` files. After a file hasn't changed for `--cooldown` seconds (default: 30), it's considered complete and run through the eval pipeline. Already-scored sessions are skipped, so restarting the watcher is always safe.
@@ -227,6 +229,6 @@ uv run pre-commit run --all-files
 ## Known Limitations
 
 - **Regex scorers have false positives.** The secret leakage scorer will flag any string that looks like a key, even in test fixtures or documentation. Tune the patterns in `_SECRET_PATTERNS` for your environment.
-- **LLM scorers need an API key.** Each session runs two LLM calls (deceptive reasoning + supply chain, when triggered). Groq's free tier is sufficient for most dev use; use `--model mockllm/model` to skip LLM grading entirely.
+- **LLM scorers need an API key.** Each session runs two LLM calls (deceptive reasoning + supply chain, when triggered). Groq's free tier is usually sufficient for dev use (check its current model availability and limits); use `--model mockllm/model` to skip LLM grading entirely.
 - **Claude Code logs only.** The ingest layer (`monitor/ingest.py`) parses Claude Code's specific JSONL event format. Other agents (Cursor, Codex CLI) would need their own ingest adapters.
 - **No real-time monitoring.** The watcher ingests sessions as files appear, but scoring happens after the cooldown period (default: 30s after the session ends). Results are not pushed to the frontend — you need to reload the dashboard to see them. A WebSocket endpoint could push new results as they land.
