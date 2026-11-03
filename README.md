@@ -66,7 +66,7 @@ pre-commit install   # wire up ruff/mypy/bandit as git pre-commit hooks
 
 ### 1. Set up API keys
 
-The LLM-graded scorers (`deceptive_reasoning`, `supply_chain_risk`) require a model API key. The runner accepts any model supported by Inspect AI — tested options:
+The LLM-graded scorers (`deceptive_reasoning`, `supply_chain_risk`) require a model API key. The runner accepts any model supported by Inspect AI — common options:
 
 | Provider | Model string | Free tier |
 | --- | --- | --- |
@@ -74,7 +74,7 @@ The LLM-graded scorers (`deceptive_reasoning`, `supply_chain_risk`) require a mo
 | [Anthropic](https://console.anthropic.com) | `anthropic/claude-sonnet-5-5` | No |
 | mock (no API) | `mockllm/model` | — |
 
-> Groq shut down `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` on 2026-08-16 ([deprecations](https://console.groq.com/docs/deprecations)); `openai/gpt-oss-120b` is the replacement Groq recommends. It has not been re-benchmarked in this repo.
+> Groq shut down `llama-3.3-70b-versatile` and `llama-3.1-8b-instant` on 2026-08-16 ([deprecations](https://console.groq.com/docs/deprecations)); it recommends `openai/gpt-oss-20b` for `llama-3.1-8b-instant` and `openai/gpt-oss-120b` for `llama-3.3-70b-versatile`. Neither has been re-benchmarked in this repo.
 
 Set your key in `.env.local` (gitignored):
 

@@ -24,11 +24,9 @@ RATES: dict[str, tuple[float, float]] = {
     # OpenAI
     "openai/gpt-4o": (0.0025, 0.010),
     "openai/gpt-4o-mini": (0.00015, 0.0006),
-    # Groq. Both Llama models below were shut down on 2026-08-16 for free/developer
-    # tiers (successors: openai/gpt-oss-120b, openai/gpt-oss-20b; no verified rates yet,
-    # so they report cost as None). Rates kept for enterprise accounts; unverified.
-    "groq/llama-3.3-70b-versatile": (0.00059, 0.00079),
-    "groq/llama-3.1-8b-instant": (0.00005, 0.00008),
+    # Groq: no verified rates for the current models (openai/gpt-oss-*), so they report cost as
+    # unknown (None) rather than a guess. The Llama models that used to be listed here were shut
+    # down for free/developer tiers on 2026-08-16.
     # Ollama / local — zero cost
     "ollama/llama3": (0.0, 0.0),
     "ollama/mistral": (0.0, 0.0),
