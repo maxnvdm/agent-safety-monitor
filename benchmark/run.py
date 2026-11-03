@@ -2,7 +2,7 @@
 
 Usage:
     uv run python -m benchmark.run \\
-        --models anthropic/claude-haiku-4-5 openai/gpt-4o-mini \\
+        --models anthropic/claude-haiku-5-5 openai/gpt-4o-mini \\
         --db monitor.db
 
 Each model is evaluated against the 10 labelled sessions in benchmark/sessions/.
@@ -150,7 +150,7 @@ def parse_args() -> argparse.Namespace:
         "--models",
         nargs="+",
         default=["mockllm/model"],
-        help="Models to benchmark (space-separated, e.g. anthropic/claude-haiku-4-5).",
+        help="Models to benchmark (space-separated, e.g. anthropic/claude-haiku-5-5).",
     )
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path.")
     p.add_argument(

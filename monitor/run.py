@@ -2,7 +2,7 @@
 
 Usage:
     uv run python -m monitor.run                                  # default model + paths
-    uv run python -m monitor.run --model anthropic/claude-haiku-4-5
+    uv run python -m monitor.run --model anthropic/claude-haiku-5-5
     uv run python -m monitor.run --log-dir samples/ --db demo.db
 """
 

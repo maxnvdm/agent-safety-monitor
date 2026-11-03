@@ -7,8 +7,6 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
-# uv
-uv.lock
 
 # Project data — never commit real user logs or scoring DBs
 logs/

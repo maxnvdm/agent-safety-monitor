@@ -1,5 +1,5 @@
 # --- Frontend build stage ---
-FROM node:20 AS frontend-build
+FROM node:22 AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN npm install -g pnpm@10.22.0
@@ -14,11 +14,15 @@ WORKDIR /app
 # System deps
 RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
 
-# Python deps via pyproject.toml
-COPY pyproject.toml ./
+# Python deps from the committed lockfile (reproducible; matches CI)
+COPY --from=ghcr.io/astral-sh/uv:0.11.32 /uv /usr/local/bin/uv
+COPY pyproject.toml uv.lock ./
+# Dependencies first so this layer is cached across source-only changes
+RUN uv sync --locked --no-dev --no-install-project
 COPY monitor ./monitor
 COPY api ./api
-RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir .
+RUN uv sync --locked --no-dev --no-editable
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Copy built static frontend files to FastAPI/static (adjust if your backend serves static files differently)
 COPY --from=frontend-build /app/frontend/dist ./frontend-dist

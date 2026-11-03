@@ -90,7 +90,7 @@ function formatDate(iso: string | null) {
 
     <div class="filter-bar card" style="margin-bottom:1.25rem">
       <label class="filter-item">
-        <input type="checkbox" v-model="failedOnly" />
+        <input v-model="failedOnly" type="checkbox">
         Failures only
       </label>
       <label class="filter-item">
@@ -109,11 +109,11 @@ function formatDate(iso: string | null) {
       <label class="filter-item">
         <span class="filter-label">Branch</span>
         <input
-          type="text"
           v-model="branchFilter"
+          type="text"
           placeholder="e.g. main"
           style="width:10rem"
-        />
+        >
       </label>
     </div>
 

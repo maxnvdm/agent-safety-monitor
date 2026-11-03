@@ -90,4 +90,4 @@ The `PATCH /sessions/{id}/results/{scorer_name}` endpoint accepts `{"marked_safe
 - The `MONITOR_DB` env var must be set before importing `api.routes.*` — tests use `monkeypatch.setenv` + `importlib.reload` for this reason.
 - Scorers read from `state.metadata`, not from model output — the passthrough solver is intentional.
 - `tests/conftest.py` patches `tiktoken.get_encoding` (autouse) because mockllm's token counting otherwise downloads BPE data from OpenAI's servers, which fails in network-restricted CI.
-- `fastapi` is pinned `<0.136.0` — 0.136.x was flagged malicious (MAL-2026-4750). Don't bump past it without checking the advisory is resolved.
+- `fastapi` excludes `0.136.3` (advisory MAL-2026-4750: undocumented `fastar` dep in the `[standard]` extra; the advisory was later withdrawn and 0.136.4+ is fine). This project uses plain `fastapi`, not `fastapi[standard]`.
