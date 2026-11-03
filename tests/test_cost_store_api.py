@@ -1,6 +1,7 @@
 import asyncio
 import importlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -32,10 +33,21 @@ def test_ingest_is_idempotent_and_incremental(tmp_path: Path) -> None:
     first = asyncio.run(store.ingest_session(log, db))
     assert first is not None
     assert asyncio.run(store.ingest_session(log, db)) is None  # unchanged log: skipped
+    # a log that grew is re-ingested without --force and the new request is stored
+    grown = LogBuilder(tmp_path, session="sess-1")
+    grown.events = [json.loads(line) for line in log.read_text().splitlines()]
+    grown._prev_prompt_tokens = 10_000
+    grown.call("m99", [("text", "one more")], out=5, new=10)
+    grown.write()
+    os.utime(log, (log.stat().st_atime, log.stat().st_mtime + 10))
+    more = asyncio.run(store.ingest_session(log, db))
+    assert more is not None and len(more.calls) == len(first.calls) + 1
+    detail = asyncio.run(store.session_detail(db, "sess-1"))
+    assert detail is not None and detail["requests"] == len(first.calls) + 1
     again = asyncio.run(store.ingest_session(log, db, force=True))
     assert again is not None
     detail = asyncio.run(store.session_detail(db, "sess-1"))
-    assert detail is not None and detail["total_usd"] == pytest.approx(first.total_usd)
+    assert detail is not None and detail["total_usd"] == pytest.approx(more.total_usd)
     tools = asyncio.run(store.tools_grouped(db, "name", "sess-1"))
     assert sum(t["invocations"] for t in tools) == 3  # force re-ingest replaced rows, no duplicates
 

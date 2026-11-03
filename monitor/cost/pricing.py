@@ -25,6 +25,7 @@ from typing import Any
 _TIER_RE = re.compile(r"^(?P<base>.+?)_above_(?P<k>\d+)k_tokens$")
 _DATE_SUFFIX_RE = re.compile(r"-\d{8}$")
 _CONTEXT_SUFFIX_RE = re.compile(r"\[\d+[km]\]$")
+DEFAULT_WEB_SEARCH_USD = 0.01  # Anthropic bills $10 per 1,000 searches on every model
 FAST_MODE_MULTIPLIER = 2.0  # Anthropic fast mode is priced at 2x standard
 
 
@@ -104,13 +105,21 @@ class RateCard:
     cache_write_1h: float
     web_search_per_request: float = 0.0
     fast_multiplier: float = 1.0
-    above_threshold: int | None = None  # prompt tokens beyond which ``above`` applies
-    above: RateCard | None = field(default=None, compare=False)
+    # Long-context tiers as ``(threshold, card)`` ascending: a request whose prompt exceeds a
+    # threshold is priced entirely at that tier's rates (the highest threshold it exceeds).
+    tiers: tuple[tuple[int, RateCard], ...] = field(default=(), compare=False)
+
+    @property
+    def above_threshold(self) -> int | None:
+        """Prompt size at which the first long-context tier starts."""
+        return self.tiers[0][0] if self.tiers else None
 
     def for_prompt(self, prompt_tokens: int) -> RateCard:
-        if self.above is not None and self.above_threshold and prompt_tokens > self.above_threshold:
-            return self.above
-        return self
+        chosen: RateCard = self
+        for threshold, card in self.tiers:
+            if prompt_tokens > threshold:
+                chosen = card
+        return chosen
 
 
 @dataclass(frozen=True)
@@ -146,7 +155,9 @@ def _card(model: str, e: dict[str, Any], suffix: str = "", fast: float = 1.0) ->
         cache_read=g("cache_read_input_token_cost"),
         cache_write_5m=w5,
         cache_write_1h=w1,
-        web_search_per_request=float(e.get("web_search_cost_per_request") or 0.0),
+        web_search_per_request=float(
+            e.get("web_search_cost_per_request", DEFAULT_WEB_SEARCH_USD) or 0.0
+        ),
         fast_multiplier=fast,
     )
 
@@ -162,9 +173,12 @@ def _build_card(model: str, e: dict[str, Any]) -> RateCard:
             tiered.setdefault(int(m["k"]), {})[m["base"]] = value
     if not tiered:
         return base
-    k = min(tiered)
-    above = _card(model, {**e, **tiered[k]}, fast=fast)
-    return RateCard(**{**base.__dict__, "above_threshold": k * 1000, "above": above})
+    overlay: dict[str, Any] = {}
+    tiers: list[tuple[int, RateCard]] = []
+    for k in sorted(tiered):  # each tier inherits the overrides of the smaller ones
+        overlay = {**overlay, **tiered[k]}
+        tiers.append((k * 1000, _card(model, {**e, **overlay}, fast=fast)))
+    return RateCard(**{**base.__dict__, "tiers": tuple(tiers)})
 
 
 @lru_cache(maxsize=1)

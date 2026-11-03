@@ -128,6 +128,8 @@ def test_findings_below_min_usd_are_dropped_and_sorted_by_savings(tmp_path: Path
     for i in range(3, 7):
         b.call(f"m{i}", [("text", "x")], out=5, new=3_010 if i == 3 else 10)
     findings, _ = _run(b)
+    large = [f for f in findings if f.kind == "large_tool_result"]
+    assert len(large) >= 2, "both oversized results must be reported for the order to mean anything"
     savings = [f.savings_usd or 0 for f in findings]
     assert savings == sorted(savings, reverse=True)
     none, _ = _run(b, Thresholds(min_usd=1e6))

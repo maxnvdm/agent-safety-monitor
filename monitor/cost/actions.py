@@ -41,9 +41,19 @@ _SUBCOMMAND_TOOLS = {
     "git", "gh", "docker", "kubectl", "npm", "pnpm", "yarn", "pip", "pip3", "cargo", "go",
     "apt", "apt-get", "brew", "systemctl", "terraform", "helm", "poetry", "bun",
 }  # fmt: skip
-_WRAPPERS = {"sudo", "time", "nohup", "env", "command", "exec", "timeout"}
+# Wrapper commands and the options that consume the next word as an operand.
+_WRAPPER_OPTS_WITH_ARG: dict[str, set[str]] = {
+    "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "-R", "-T", "-U", "--user", "--group", "--host"},
+    "env": {"-u", "-C", "-S", "--unset", "--chdir"},
+    "timeout": {"-s", "-k", "--signal", "--kill-after"},
+    "time": {"-f", "-o", "--format", "--output"},
+    "exec": {"-a"},
+    "nohup": set(),
+    "command": set(),
+}
+_WRAPPER_POSITIONAL = {"timeout": 1}  # `timeout 30 cmd`: one DURATION operand before the command
 _ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-_SPLIT_RE = re.compile(r"\s*(?:&&|\|\||;|\n|\|)\s*")
+_SKIP_HEADS = {"cd", "export", "set", "echo", "true", "source", ".", "unset", "pushd", "popd"}
 
 
 def family_of(tool_name: str) -> str:
@@ -53,16 +63,95 @@ def family_of(tool_name: str) -> str:
     return _FAMILIES.get(tool_name, "other")
 
 
+def split_commands(command: str) -> list[list[str]]:
+    """Split a shell command line into simple commands (lists of words), quote-aware.
+
+    ``&&``, ``||``, ``;``, ``|``, ``&`` and newlines separate commands *outside* quotes only, so
+    ``grep 'a|b' f`` is one command. Quotes are removed from the resulting words. This is a
+    classifier, not a shell: heredoc bodies and ``$(...)`` are not interpreted.
+    """
+    segments: list[list[str]] = []
+    words: list[str] = []
+    buf: list[str] = []
+    has_word = False
+    quote: str | None = None
+    i, n = 0, len(command)
+
+    def end_word() -> None:
+        nonlocal has_word
+        if has_word:
+            words.append("".join(buf))
+        buf.clear()
+        has_word = False
+
+    def end_segment() -> None:
+        end_word()
+        if words:
+            segments.append(words[:])
+        words.clear()
+
+    while i < n:
+        ch = command[i]
+        if quote:
+            if ch == quote:
+                quote = None
+            elif ch == "\\" and quote == '"' and i + 1 < n:
+                i += 1
+                buf.append(command[i])
+            else:
+                buf.append(ch)
+        elif ch in "'\"":
+            quote, has_word = ch, True
+        elif ch == "\\" and i + 1 < n:
+            i += 1
+            buf.append(command[i])
+            has_word = True
+        elif ch in " \t\r":
+            end_word()
+        elif ch in "\n;|&":
+            end_segment()
+            if ch in "|&" and command[i + 1 : i + 2] == ch:
+                i += 1
+        else:
+            buf.append(ch)
+            has_word = True
+        i += 1
+    end_segment()
+    return segments
+
+
+def _strip_wrappers(words: list[str]) -> list[str]:
+    """Drop leading ``VAR=x`` assignments and wrapper commands *with* their options/operands."""
+    while words:
+        head = PurePosixPath(words[0]).name
+        if _ASSIGN_RE.match(words[0]):
+            words = words[1:]
+        elif head in _WRAPPER_OPTS_WITH_ARG:
+            with_arg = _WRAPPER_OPTS_WITH_ARG[head]
+            rest = words[1:]
+            while rest and rest[0].startswith("-") and rest[0] != "-":
+                opt = rest[0]
+                rest = rest[2:] if opt in with_arg else rest[1:]
+                if opt == "--":
+                    break
+            if head == "env":  # env also takes assignments before the command
+                while rest and _ASSIGN_RE.match(rest[0]):
+                    rest = rest[1:]
+            rest = rest[_WRAPPER_POSITIONAL.get(head, 0) :]
+            words = rest
+        else:
+            break
+    return words
+
+
 def bash_action(command: str) -> str:
     """Name the command a Bash call really runs (skipping ``cd x &&``, env vars, sudo...)."""
-    for segment in _SPLIT_RE.split(command.strip()):
-        words = segment.split()
-        while words and (_ASSIGN_RE.match(words[0]) or words[0] in _WRAPPERS):
-            words = words[1:]
-        if not words or words[0] in {"cd", "export", "set", "echo", "true", "source", "."}:
+    for segment in split_commands(command):
+        words = _strip_wrappers(segment)
+        if not words or PurePosixPath(words[0]).name in _SKIP_HEADS:
             continue
         head = PurePosixPath(words[0]).name
-        rest = [w for w in words[1:]]
+        rest = words[1:]
         sub = rest[0] if rest and not rest[0].startswith("-") else None
         if head == "uv" and sub == "run":
             tail = [w for w in rest[1:] if not w.startswith("-")]

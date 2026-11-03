@@ -164,7 +164,7 @@ uv run python -m monitor.cost report path/ --json
 
 The report shows, for one session or all of them:
 
-- **Every dollar and its owner:** tool calls, thinking, skill text, fixed context (system prompt, tool definitions, memory), cache rebuilds. The shares sum to 100%.
+- **Every dollar and its owner:** tool calls, skill text, fixed context (system prompt, tool definitions, memory), your prompts, assistant replies, thinking, other context (reminders, attachments), cache rebuilds, and web-search fees. The shares sum to 100%.
 - **The most expensive prompts**, and how much of the bill is re-reading context, writing new context, or generating output.
 - **Tools grouped by name, family, action or active skill.** Each call has two costs, and they are different questions:
   - `own`: generating the call, writing its arguments and result into the cache, and re-reading them on every later request. Additive.
@@ -174,8 +174,8 @@ The report shows, for one session or all of them:
 
 How to trust the numbers:
 
-- **Totals are exact; per-item splits are estimates.** The log has token totals per request but not per block, so each request's tokens are split across what entered context by size. On a real session this fit well (new tokens ≈ 43 + characters / 2.2, R² = 0.97).
-- **Reconciles with Claude Code:** the report compares against Claude Code's own session total. The gap is requests that never appear in the transcript (WebFetch/WebSearch summarising, title generation). On the session this was built on, the difference was about 5%.
+- **Totals are exact; per-item splits are estimates.** The log has token totals per request but not per block, so each request's tokens are split across what entered context by size. Sizes are converted at an assumed 2.5 characters per token (a deliberate middle between code/JSON at ~2.2 and prose at ~4); on one real session, new tokens per request fit characters / 2.2 plus a fixed overhead of ~43 tokens (R² = 0.97), so the assumption is reasonable but approximate.
+- **Reconciles with Claude Code:** the report compares against Claude Code's own session total. A positive gap is requests that never appear in the transcript (WebFetch/WebSearch summarising, title generation); a negative gap means the transcript prices higher than Claude Code did (check the price table). On the session this was built on, the difference was about 5%.
 - **Prices** come from a vendored copy of [LiteLLM's price table](https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json), including cache read and 5-minute / 1-hour cache write rates. Refresh with `uv run python scripts/update_model_prices.py`, or point `MONITOR_PRICES` at a JSON file with the same `models` schema to override rates. These are list prices; subscription plans bill differently. Requests for models with no price count as $0 and are called out in the report.
 - **Privacy:** stored prompt previews and command descriptions are truncated and have obvious secrets redacted (the same patterns the `secret_leakage` scorer uses). Use `--no-preview` to store no prompt text at all.
 - **Not yet validated against real logs:** subagent logs (read from `<session>/subagents/agent-*.jsonl`) and context compaction are covered by synthetic tests only.

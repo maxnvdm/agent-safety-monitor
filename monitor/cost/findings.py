@@ -130,7 +130,7 @@ def _large_results(sess: ParsedSession, costs: SessionCosts, th: Thresholds) -> 
     for t in costs.tools.values():
         if t.result_tokens < th.large_result_tokens:
             continue
-        lifetime = t.write_usd + t.carry_usd
+        lifetime = t.result_write_usd + t.result_carry_usd  # the result only, not the call's args
         keep = min(th.result_target_tokens / t.result_tokens, 1.0)
         out.append(
             Finding(
@@ -166,11 +166,14 @@ def _repeated_identical_calls(
     out = []
     for ids in groups.values():
         ids.sort(key=lambda i: sess.tool_uses[i].call_index)
-        seen: dict[str, str] = {}  # result hash -> first call that produced it
-        for tid in ids:
+        # Only *consecutive* identical results count: A, B, A means the state changed in between,
+        # so the second A was a legitimate re-check.
+        first = ids[0]
+        prev_hash = sess.tool_uses[ids[0]].result_hash
+        for tid in ids[1:]:
             tu = sess.tool_uses[tid]
-            first = seen.setdefault(tu.result_hash or "", tid)
-            if first == tid:
+            if tu.result_hash != prev_hash:
+                first, prev_hash = tid, tu.result_hash
                 continue
             t = costs.tools[tid]
             out.append(
@@ -250,7 +253,7 @@ def _heavy_skills(sess: ParsedSession, costs: SessionCosts, th: Thresholds) -> l
 def _many_roundtrips(sess: ParsedSession, costs: SessionCosts, th: Thresholds) -> list[Finding]:
     out = []
     for p in costs.prompts.values():
-        if p.tool_calls < th.many_roundtrips_calls:
+        if p.tool_requests < th.many_roundtrips_calls:
             continue
         out.append(
             Finding(
@@ -259,14 +262,19 @@ def _many_roundtrips(sess: ParsedSession, costs: SessionCosts, th: Thresholds) -
                 prompt_id=p.prompt_id,
                 cost_usd=p.read_usd,
                 summary=(
-                    f"{p.tool_calls} tool calls across {p.calls} requests: ${p.read_usd:.2f} went on re-reading "
+                    f"{p.tool_requests} tool round trips ({p.tool_calls} calls) across {p.calls} requests: ${p.read_usd:.2f} went on re-reading "
                     f"context on every round trip ({p.preview[:60]!r})"
                 ),
                 suggestion=(
                     "Each tool call is a full round trip over the whole context. Batch independent calls into one "
                     "turn (parallel tool use), or replace a chain of small calls with one script."
                 ),
-                evidence={"tool_calls": p.tool_calls, "requests": p.calls, "read_usd": p.read_usd},
+                evidence={
+                    "round_trips": p.tool_requests,
+                    "tool_calls": p.tool_calls,
+                    "requests": p.calls,
+                    "read_usd": p.read_usd,
+                },
             )
         )
     return out

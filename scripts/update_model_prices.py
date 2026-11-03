@@ -19,6 +19,7 @@ from urllib.request import urlopen
 SOURCE_URL = (
     "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
 )
+WEB_SEARCH_DEFAULT = 0.01
 OUT = Path(__file__).resolve().parent.parent / "monitor" / "cost" / "model_prices.json"
 KEEP_EXACT = {
     "input_cost_per_token",
@@ -46,8 +47,9 @@ def build(table: dict[str, dict]) -> dict:
         search = (entry.get("search_context_cost_per_query") or {}).get(
             "search_context_size_medium"
         )
-        if search is not None:
-            slim["web_search_cost_per_request"] = search
+        # Anthropic bills web search at $10 per 1,000 requests on every model; LiteLLM omits the
+        # field for some (e.g. Haiku 4.5), which would silently drop search fees from totals.
+        slim["web_search_cost_per_request"] = search if search is not None else WEB_SEARCH_DEFAULT
         models[name] = slim
     return {
         "_meta": {

@@ -2,8 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from typing import Any
+
+_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def clean(value: Any) -> str:
+    """Make log-derived text safe to print: control characters (ANSI escapes, cursor moves,
+    carriage returns...) could otherwise rewrite or spoof the report in a terminal."""
+    return _CONTROL_RE.sub(" ", str(value))
 
 
 def usd(v: float | None, places: int = 2) -> str:
@@ -23,7 +32,7 @@ def pct(part: float | None, whole: float | None) -> str:
 
 
 def table(headers: Sequence[str], rows: Sequence[Sequence[Any]], left: Sequence[int] = (0,)) -> str:
-    cells = [[str(c) for c in r] for r in rows]
+    cells = [[clean(c) for c in r] for r in rows]
     widths = [
         max(len(h), *(len(r[i]) for r in cells)) if cells else len(h) for i, h in enumerate(headers)
     ]
@@ -65,7 +74,7 @@ def render(
 ) -> str:
     total = overall["total_usd"] or 0.0
     out: list[str] = []
-    title = f"Session {session_id}" if session_id else f"{overall['sessions']} sessions"
+    title = f"Session {clean(session_id)}" if session_id else f"{overall['sessions']} sessions"
     out.append(
         f"{title}: {usd(total)} over {overall['requests']} API requests and {overall['prompts']} prompts"
     )
@@ -77,13 +86,18 @@ def render(
     if detail and detail.get("reported_usd") is not None:
         out.append(
             f"  Claude Code's own total was {usd(detail['reported_usd'])} when it last wrote one; the transcript "
-            f"accounts for {usd(detail['logged_usd_at_report'])} of that. The difference "
-            f"({usd(detail['unlogged_usd'])}) is requests that never appear in the transcript "
-            "(WebFetch/WebSearch summarising, title generation, ...)."
+            f"accounts for {usd(detail['logged_usd_at_report'])} of that. "
+            + (
+                f"The difference ({usd(detail['unlogged_usd'])}) is requests that never appear in the "
+                "transcript (WebFetch/WebSearch summarising, title generation, ...)."
+                if detail["unlogged_usd"] >= 0
+                else f"The transcript is {usd(-detail['unlogged_usd'])} HIGHER than Claude Code's figure: "
+                "check the price table (MONITOR_PRICES) and the logged models."
+            )
         )
     if detail and detail.get("unknown_models"):
         out.append(
-            f"  WARNING: no price for {', '.join(detail['unknown_models'])}; those requests count as $0."
+            f"  WARNING: no price for {clean(', '.join(detail['unknown_models']))}; those requests count as $0."
         )
 
     out += ["", "Where the money goes (every dollar has exactly one owner)"]
@@ -180,6 +194,6 @@ def render(
                 else "no estimate"
             )
             out.append(
-                f"- [{f['kind']}] {usd(f['cost_usd'])} ({saving})\n    {f['summary']}\n    -> {f['suggestion']}"
+                f"- [{clean(f['kind'])}] {usd(f['cost_usd'])} ({clean(saving)})\n    {clean(f['summary'])}\n    -> {clean(f['suggestion'])}"
             )
     return "\n".join(out)

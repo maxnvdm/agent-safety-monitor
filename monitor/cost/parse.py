@@ -24,6 +24,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from monitor.cost.actions import classify
 from monitor.cost.pricing import Usage, as_dict
 from monitor.ingest import iter_events
 from monitor.scorers import SECRET_PATTERNS
@@ -34,11 +35,36 @@ _ASSIGNMENT_RE = re.compile(
 )
 
 
+_SENSITIVE_KEY_RE = re.compile(
+    r"(?i)(token|secret|passw(?:or)?d|passwd|api[_-]?key|authorization|cookie|credential|bearer|private[_-]?key)"
+)
+
+
 def redact(text: str) -> str:
     """Mask obvious secrets before a command/path description is stored."""
     for _label, pattern in SECRET_PATTERNS:
         text = pattern.sub("[REDACTED]", text)
     return _ASSIGNMENT_RE.sub(r"\1\2[REDACTED]", text)
+
+
+def redact_structure(value: Any) -> Any:
+    """Copy of a JSON-like value with the value of every sensitive-looking key masked.
+
+    Regexes over serialized JSON miss quoted keys (``"password": "x"``) and nested headers, so
+    structured tool input is masked by key *before* it is serialized.
+    """
+    if isinstance(value, dict):
+        return {
+            k: "[REDACTED]"
+            if isinstance(k, str) and _SENSITIVE_KEY_RE.search(k)
+            else redact_structure(v)
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_structure(v) for v in value]
+    if isinstance(value, str):
+        return redact(value)
+    return value
 
 
 # ---------- records -----------------------------------------------------------
@@ -99,6 +125,7 @@ class ToolUse:
     target: str  # short, redacted description of what it acted on
     input_chars: int
     input_hash: str
+    action: str = ""  # classified from the full input, before ``target`` is truncated
     is_error: bool | None = None
     result_chars: int | None = None
     result_hash: str | None = None
@@ -169,7 +196,13 @@ def summarize_input(name: str, tool_input: dict[str, Any]) -> str:
         val = tool_input.get(key)
         if isinstance(val, str) and val:
             return redact(" ".join(val.split()))[:160]
-    return redact(json.dumps(tool_input, sort_keys=True))[:160]
+    return json.dumps(redact_structure(tool_input), sort_keys=True)[:160]
+
+
+def _action_for(name: str, tool_input: dict[str, Any]) -> str:
+    """Classify from the untruncated input so long commands are not grouped by a prefix."""
+    full = tool_input.get("command") if name == "Bash" else None
+    return classify(name, full if isinstance(full, str) else "")[1]
 
 
 # ---------- parsing -----------------------------------------------------------
@@ -249,7 +282,6 @@ def _parse_file(
 ) -> None:
     threads: dict[str, _Thread] = {}
     current_prompt: str | None = None
-    last_main_prompt_for: dict[str, str | None] = {}
 
     for ev in iter_events(path):
         etype = ev.get("type")
@@ -308,7 +340,7 @@ def _parse_file(
                 ts=ev.get("timestamp"),
                 model=str(msg.get("model") or "unknown"),
                 usage=usage,
-                prompt_id=current_prompt if tkey == MAIN else last_main_prompt_for.get(tkey),
+                prompt_id=current_prompt if tkey == MAIN else None,
                 skill=ev.get("attributionSkill"),
                 mcp_server=ev.get("attributionMcpServer"),
                 mcp_tool=ev.get("attributionMcpTool"),
@@ -337,6 +369,7 @@ def _parse_file(
                 prompt_id=call.prompt_id,
                 skill=call.skill,
                 target=summarize_input(str(b.get("name")), tool_input),
+                action=_action_for(str(b.get("name")), tool_input),
                 input_chars=len(json.dumps(tool_input, sort_keys=True)),
                 input_hash=_hash(json.dumps([b.get("name"), tool_input], sort_keys=True)),
             )
@@ -424,3 +457,7 @@ def _assign_subagent_prompts(sess: ParsedSession) -> None:
         for t, pid in timeline:
             if t is not None and t <= when:
                 c.prompt_id = pid
+    by_index = {c.index: c for c in sess.calls}
+    for tu in sess.tool_uses.values():
+        if tu.prompt_id is None and (owner := by_index.get(tu.call_index)) is not None:
+            tu.prompt_id = owner.prompt_id

@@ -111,6 +111,7 @@ def _records(
     tools = []
     for t in costs.tools.values():
         family, action = classify(t.name, t.target)
+        action = t.action or action
         tools.append(
             dict(
                 tool_use_id=t.tool_use_id, name=t.name, family=family, action=action, target=t.target,
@@ -143,6 +144,21 @@ def _records(
     }  # fmt: skip
 
 
+async def _preview_mismatch(db: aiosqlite.Connection, session_id: str, preview_chars: int) -> bool:
+    """Does what is stored disagree with the requested preview mode?
+
+    ``--no-preview`` must scrub text stored by an earlier run, and asking for previews again must
+    restore them, so an unchanged log is only skipped when the stored previews match the mode.
+    """
+    async with db.execute(
+        "SELECT COUNT(*), SUM(CASE WHEN preview <> '' THEN 1 ELSE 0 END) FROM cost_prompts WHERE session_id = ?",
+        (session_id,),
+    ) as cur:
+        total, with_text = await cur.fetchone() or (0, 0)
+    with_text = with_text or 0
+    return with_text > 0 if preview_chars == 0 else (total > 0 and with_text == 0)
+
+
 async def ingest_session(
     path: Path | str,
     db_path: str = DEFAULT_DB,
@@ -164,7 +180,11 @@ async def ingest_session(
                 "SELECT log_mtime FROM cost_sessions WHERE session_id = ?", (path.stem,)
             ) as cur:
                 row = await cur.fetchone()
-            if row and row[0] == mtime:
+            if (
+                row
+                and row[0] == mtime
+                and not await _preview_mismatch(db, path.stem, preview_chars)
+            ):
                 return None
     sess = parse_session(path, preview_chars=preview_chars)
     costs = attribute(sess)
@@ -211,13 +231,29 @@ async def _fetch(db_path: str, sql: str, params: Sequence[Any] = ()) -> list[dic
             return [dict(r) async for r in cur]
 
 
+Scope = str | Sequence[str] | None  # one session id, several, or everything
+
+
+def _scope(session_ids: Scope) -> tuple[str, list[str]]:
+    """SQL condition + params restricting a query to the given sessions (``1=1`` for all)."""
+    if session_ids is None:
+        return "1=1", []
+    ids = [session_ids] if isinstance(session_ids, str) else list(session_ids)
+    if not ids:
+        return "1=0", []
+    return f"session_id IN ({','.join('?' * len(ids))})", ids
+
+
 async def list_sessions(db_path: str, limit: int = 50) -> list[dict[str, Any]]:
-    return await _fetch(
+    rows = await _fetch(
         db_path,
         "SELECT session_id, cwd, git_branch, started_at, ended_at, total_usd, requests, prompts, reported_usd, "
         "logged_usd_at_report, unknown_models FROM cost_sessions ORDER BY started_at DESC LIMIT ?",
         (limit,),
     )
+    for r in rows:
+        r["unknown_models"] = json.loads(r["unknown_models"] or "[]")
+    return rows
 
 
 async def session_detail(db_path: str, session_id: str) -> dict[str, Any] | None:
@@ -246,22 +282,25 @@ async def session_detail(db_path: str, session_id: str) -> dict[str, Any] | None
             (session_id,),
         )
     )[0]
+    # Signed: positive = Claude Code billed requests the transcript lacks; negative = the
+    # transcript prices higher than Claude Code reported (a pricing or logging mismatch).
     s["unlogged_usd"] = (
         None
         if s["reported_usd"] is None
-        else max(s["reported_usd"] - (s["logged_usd_at_report"] or 0.0), 0.0)
+        else s["reported_usd"] - (s["logged_usd_at_report"] or 0.0)
     )
     return s
 
 
 async def prompts(
-    db_path: str, session_id: str, limit: int = 20, by: str = "total_usd"
+    db_path: str, session_id: Scope, limit: int = 20, by: str = "total_usd"
 ) -> list[dict[str, Any]]:
     order = by if by in {"total_usd", "ts", "requests", "tool_calls", "read_usd"} else "total_usd"
+    cond, params = _scope(session_id)
     return await _fetch(
         db_path,
-        f"SELECT * FROM cost_prompts WHERE session_id = ? ORDER BY {order} DESC LIMIT ?",  # nosec B608
-        (session_id, limit),
+        f"SELECT * FROM cost_prompts WHERE {cond} ORDER BY {order} DESC LIMIT ?",  # nosec B608
+        (*params, limit),
     )
 
 
@@ -274,10 +313,11 @@ _GROUPS = {
 
 
 async def tools_grouped(
-    db_path: str, group_by: str = "name", session_id: str | None = None, limit: int = 30
+    db_path: str, group_by: str = "name", session_id: Scope = None, limit: int = 30
 ) -> list[dict[str, Any]]:
     """Aggregate tool cost by name / family / action / active skill (``own`` is additive; ``roundtrip`` is not)."""
     col = _GROUPS.get(group_by, "name")
+    cond, params = _scope(session_id)
     return await _fetch(
         db_path,
         f"SELECT {col} AS key, COUNT(*) AS invocations, SUM(own_usd) AS own_usd, "  # nosec B608
@@ -285,102 +325,110 @@ async def tools_grouped(
         "SUM(roundtrip_usd) AS roundtrip_usd, SUM(subagent_usd) AS subagent_usd, "
         "AVG(own_usd) AS avg_own_usd, AVG(roundtrip_usd) AS avg_roundtrip_usd, "
         "AVG(result_tokens) AS avg_result_tokens, SUM(COALESCE(is_error, 0)) AS errors "
-        "FROM cost_tools WHERE (? IS NULL OR session_id = ?) GROUP BY key ORDER BY own_usd DESC LIMIT ?",
-        (session_id, session_id, limit),
+        f"FROM cost_tools WHERE {cond} GROUP BY key ORDER BY own_usd DESC LIMIT ?",
+        (*params, limit),
     )
 
 
 async def top_invocations(
-    db_path: str, session_id: str | None = None, limit: int = 20, by: str = "own_usd"
+    db_path: str, session_id: Scope = None, limit: int = 20, by: str = "own_usd"
 ) -> list[dict[str, Any]]:
     order = by if by in {"own_usd", "roundtrip_usd", "result_tokens", "carry_usd"} else "own_usd"
+    cond, params = _scope(session_id)
     return await _fetch(
         db_path,
         "SELECT session_id, tool_use_id, name, action, target, prompt_id, skill, result_tokens, carried_calls, "  # nosec B608
         f"out_usd, write_usd, carry_usd, own_usd, roundtrip_usd, is_error FROM cost_tools "
-        f"WHERE (? IS NULL OR session_id = ?) ORDER BY {order} DESC LIMIT ?",
-        (session_id, session_id, limit),
+        f"WHERE {cond} ORDER BY {order} DESC LIMIT ?",
+        (*params, limit),
     )
 
 
-async def skills(db_path: str, session_id: str | None = None) -> list[dict[str, Any]]:
+async def skills(db_path: str, session_id: Scope = None, limit: int = 30) -> list[dict[str, Any]]:
+    cond, params = _scope(session_id)
     return await _fetch(
         db_path,
-        "SELECT name, COUNT(*) AS sessions, SUM(invocations) AS invocations, AVG(load_tokens) AS avg_load_tokens, "
+        "SELECT name, COUNT(*) AS sessions, SUM(invocations) AS invocations, AVG(load_tokens) AS avg_load_tokens, "  # nosec B608
         "SUM(load_write_usd) AS load_write_usd, SUM(load_carry_usd) AS load_carry_usd, SUM(load_usd) AS load_usd, "
         "SUM(span_calls) AS span_calls, SUM(span_usd) AS span_usd FROM cost_skills "
-        "WHERE (? IS NULL OR session_id = ?) GROUP BY name ORDER BY load_usd DESC",
-        (session_id, session_id),
+        f"WHERE {cond} GROUP BY name ORDER BY load_usd DESC LIMIT ?",
+        (*params, limit),
     )
 
 
 async def findings(
-    db_path: str, session_id: str | None = None, kind: str | None = None, limit: int = 50
+    db_path: str, session_id: Scope = None, kind: str | None = None, limit: int = 50
 ) -> list[dict[str, Any]]:
+    cond, params = _scope(session_id)
+    if kind is not None:
+        cond, params = f"{cond} AND kind = ?", [*params, kind]
     rows = await _fetch(
         db_path,
-        "SELECT * FROM cost_findings WHERE (? IS NULL OR session_id = ?) AND (? IS NULL OR kind = ?) "
+        f"SELECT * FROM cost_findings WHERE {cond} "  # nosec B608
         "ORDER BY COALESCE(savings_usd, 0) DESC, cost_usd DESC LIMIT ?",
-        (session_id, session_id, kind, kind, limit),
+        (*params, limit),
     )
     for r in rows:
         r["evidence"] = json.loads(r["evidence"] or "{}")
     return rows
 
 
-async def waste_summary(db_path: str, session_id: str | None = None) -> list[dict[str, Any]]:
+async def waste_summary(db_path: str, session_id: Scope = None) -> list[dict[str, Any]]:
     """Findings rolled up by kind: how many, what they cost, what fixing them might save."""
+    cond, params = _scope(session_id)
     return await _fetch(
         db_path,
-        "SELECT kind, COUNT(*) AS findings, SUM(cost_usd) AS cost_usd, SUM(COALESCE(savings_usd, 0)) AS savings_usd "
-        "FROM cost_findings WHERE (? IS NULL OR session_id = ?) GROUP BY kind ORDER BY savings_usd DESC, cost_usd DESC",
-        (session_id, session_id),
+        "SELECT kind, COUNT(*) AS findings, SUM(cost_usd) AS cost_usd, SUM(COALESCE(savings_usd, 0)) AS savings_usd "  # nosec B608
+        f"FROM cost_findings WHERE {cond} GROUP BY kind ORDER BY savings_usd DESC, cost_usd DESC",
+        params,
     )
 
 
-async def bucket_totals(db_path: str, session_id: str | None = None) -> dict[str, float]:
+async def bucket_totals(db_path: str, session_id: Scope = None) -> dict[str, float]:
     """Every dollar, by owner: context buckets plus ``tool_calls`` and ``skill_text`` (sums to the total)."""
+    cond, params = _scope(session_id)
     rows = await _fetch(
         db_path,
-        "SELECT bucket, SUM(usd) AS usd FROM cost_buckets WHERE (? IS NULL OR session_id = ?) GROUP BY bucket",
-        (session_id, session_id),
+        f"SELECT bucket, SUM(usd) AS usd FROM cost_buckets WHERE {cond} GROUP BY bucket",  # nosec B608
+        params,
     )
     out = {r["bucket"]: r["usd"] for r in rows}
     out["tool_calls"] = (
         await _fetch(
             db_path,
-            "SELECT COALESCE(SUM(own_usd), 0) AS v FROM cost_tools WHERE (? IS NULL OR session_id = ?)",
-            (session_id, session_id),
+            f"SELECT COALESCE(SUM(own_usd), 0) AS v FROM cost_tools WHERE {cond}",  # nosec B608
+            params,
         )
     )[0]["v"]
     out["skill_text"] = (
         await _fetch(
             db_path,
-            "SELECT COALESCE(SUM(load_usd), 0) AS v FROM cost_skills WHERE (? IS NULL OR session_id = ?)",
-            (session_id, session_id),
+            f"SELECT COALESCE(SUM(load_usd), 0) AS v FROM cost_skills WHERE {cond}",  # nosec B608
+            params,
         )
     )[0]["v"]
     return out
 
 
-async def overall(db_path: str, session_id: str | None = None) -> dict[str, Any]:
-    """Totals for one session or all of them, including how much of the bill each cost class is."""
+async def overall(db_path: str, session_id: Scope = None) -> dict[str, Any]:
+    """Totals for the chosen sessions (default all), including how much of the bill each cost class is."""
+    cond, params = _scope(session_id)
     row = (
         await _fetch(
             db_path,
-            "SELECT COUNT(*) AS sessions, SUM(total_usd) AS total_usd, SUM(requests) AS requests, "
+            "SELECT COUNT(*) AS sessions, SUM(total_usd) AS total_usd, SUM(requests) AS requests, "  # nosec B608
             "SUM(prompts) AS prompts, SUM(reported_usd) AS reported_usd, SUM(logged_usd_at_report) AS logged_at_report "
-            "FROM cost_sessions WHERE (? IS NULL OR session_id = ?)",
-            (session_id, session_id),
+            f"FROM cost_sessions WHERE {cond}",
+            params,
         )
     )[0]
     split = (
         await _fetch(
             db_path,
-            "SELECT SUM(usd_input + usd_cache_write) AS write_usd, SUM(usd_cache_read) AS read_usd, "
+            "SELECT SUM(usd_input + usd_cache_write) AS write_usd, SUM(usd_cache_read) AS read_usd, "  # nosec B608
             "SUM(usd_output) AS output_usd, SUM(usd_web_search) AS web_usd FROM cost_calls "
-            "WHERE (? IS NULL OR session_id = ?)",
-            (session_id, session_id),
+            f"WHERE {cond}",
+            params,
         )
     )[0]
     return {**row, **split}

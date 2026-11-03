@@ -86,6 +86,9 @@ class ToolCost:
     out_usd: float = 0.0  # generating the arguments
     write_usd: float = 0.0  # writing arguments + result into the cache
     carry_usd: float = 0.0  # re-reading them on every later request
+    action: str = ""  # what Bash really ran, from the full command (empty: derive from the target)
+    result_write_usd: float = 0.0  # the result's share of write_usd (excludes the call's args)
+    result_carry_usd: float = 0.0  # the result's share of carry_usd
     carried_calls: int = 0  # how many later requests re-read the result
     roundtrip_usd: float = 0.0  # cost of the requests this result triggered (trigger view)
     subagent_usd: float = 0.0  # cost of a subagent this call spawned (reported separately)
@@ -117,7 +120,8 @@ class PromptCost:
     preview: str
     ts: str | None
     calls: int = 0
-    tool_calls: int = 0
+    tool_calls: int = 0  # tool_use blocks emitted
+    tool_requests: int = 0  # requests that emitted at least one tool call (= round trips)
     output_usd: float = 0.0
     write_usd: float = 0.0
     read_usd: float = 0.0
@@ -212,11 +216,11 @@ def attribute(sess: ParsedSession) -> SessionCosts:
             tu.call_index,
             tu.is_error,
             tu.result_chars or 0,
+            action=tu.action,
         )
 
     ledgers: dict[str, list[_Entry]] = defaultdict(list)
     prev: dict[str, ApiCall] = {}
-    prev_cost: dict[str, CallCost] = {}
     # tool_use_id -> number of reads that included its result (for carried_calls)
     carried: dict[str, int] = defaultdict(int)
 
@@ -273,16 +277,15 @@ def attribute(sess: ParsedSession) -> SessionCosts:
             read_rate = (
                 bd.cache_read / call.usage.cache_read_tokens
                 if call.usage.cache_read_tokens
-                else (card.cache_read if card else 0.0)
+                else (card.for_prompt(call.usage.prompt_tokens).cache_read if card else 0.0)
             )
             cc.rebuild_excess_usd = surplus * max(rate - read_rate, 0.0)
             out.buckets[REBUILD] += cc.rebuild_usd
             write_cost -= cc.rebuild_usd
         new_tokens = w_tokens - surplus
-        if p_call is not None:
-            _promote_previous_output(
-                out, ledger, p_call, prev_cost[call.thread], new_tokens, write_cost
-            )
+        if p_call is not None and not call.context_reset:
+            # (after a compaction the previous output is gone from context: the summary replaces it)
+            _promote_previous_output(out, ledger, p_call, new_tokens, write_cost)
             carried_out = min(float(p_call.usage.output_tokens), new_tokens)
             write_cost_user = write_cost * (1 - carried_out / new_tokens) if new_tokens > 0 else 0.0
             new_tokens -= carried_out
@@ -309,7 +312,7 @@ def attribute(sess: ParsedSession) -> SessionCosts:
 
         _roundtrip(out, call, bd.total)
         _rollup_prompt_and_skill(out, call, cc)
-        prev[call.thread], prev_cost[call.thread] = call, cc
+        prev[call.thread] = call
         cc.gap_seconds = _gap(p_call, call)
 
     out.baseline_tokens = sum(e.tokens for e in ledgers.get(MAIN, []) if e.kind == BASELINE)
@@ -338,6 +341,10 @@ def _credit(out: SessionCosts, e: _Entry, how: str, usd: float) -> None:
         else:
             t.write_usd += usd
         if e.kind == "tool_result":
+            if how == "carry":
+                t.result_carry_usd += usd
+            else:
+                t.result_write_usd += usd
             t.result_tokens = max(t.result_tokens, e.tokens)
     elif e.kind == "skill_content" and e.key:
         s = out.skills.setdefault(e.key, SkillCost(e.key))
@@ -353,7 +360,6 @@ def _promote_previous_output(
     out: SessionCosts,
     ledger: list[_Entry],
     p_call: ApiCall,
-    p_cost: CallCost,
     new_tokens: float,
     write_cost: float,
 ) -> None:
@@ -365,6 +371,11 @@ def _promote_previous_output(
     weights = _call_weights(p_call, p_call.usage.output_tokens)
     total_w = sum(w for _, w in weights)
     if not weights or total_w <= 0:
+        # no parsed blocks to split over: still book the dollars (caller removed them from the
+        # user-side write) so attributed_usd stays equal to total_usd
+        entry = _Entry(TEXT, carried_out)
+        _credit(out, entry, "write", carried_out * cost_per_token)
+        ledger.append(entry)
         return
     for block, w in weights:
         tokens = carried_out * w / total_w
@@ -374,7 +385,6 @@ def _promote_previous_output(
             entry = _Entry(THINKING if block.kind == "thinking" else TEXT, tokens)
         _credit(out, entry, "write", tokens * cost_per_token)
         ledger.append(entry)
-    del p_cost
 
 
 def _write_user_side(
@@ -435,7 +445,9 @@ def _rollup_prompt_and_skill(out: SessionCosts, call: ApiCall, cc: CallCost) -> 
     if call.prompt_id and call.prompt_id in out.prompts:
         p = out.prompts[call.prompt_id]
         p.calls += 1
-        p.tool_calls += sum(1 for b in call.blocks if b.kind == "tool_use")
+        tool_blocks = sum(1 for b in call.blocks if b.kind == "tool_use")
+        p.tool_calls += tool_blocks
+        p.tool_requests += 1 if tool_blocks else 0
         p.output_usd += cc.breakdown.output
         p.write_usd += cc.breakdown.write_side
         p.read_usd += cc.breakdown.cache_read

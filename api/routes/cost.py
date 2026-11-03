@@ -5,12 +5,23 @@ from __future__ import annotations
 import os
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from monitor.cost import store
 
-router = APIRouter()
 DB = os.getenv("MONITOR_DB", "monitor.db")
+_ready: set[str] = set()
+
+
+async def _ensure_tables() -> None:
+    """A database initialised by ``monitor.db`` has no ``cost_*`` tables yet: create them so the
+    endpoints return empty results instead of failing."""
+    if DB not in _ready:
+        await store.init_cost_tables(DB)
+        _ready.add(DB)
+
+
+router = APIRouter(dependencies=[Depends(_ensure_tables)])
 
 
 @router.get("/sessions")

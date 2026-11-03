@@ -8,6 +8,7 @@ skill text as an ``isMeta`` user event with ``sourceToolUseID``.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,7 @@ class LogBuilder:
     def __init__(
         self, tmp_path: Path, session: str = "sess-1", model: str = "claude-sonnet-5-5"
     ) -> None:
+        self.session = session
         self.path = tmp_path / f"{session}.jsonl"
         self.model = model
         self.events: list[dict[str, Any]] = []
@@ -33,15 +35,14 @@ class LogBuilder:
 
     def _ts(self, advance: float = 5.0) -> str:
         self._t += advance
-        h, rem = divmod(int(self._t), 3600)
-        m, s = divmod(rem, 60)
-        return f"2026-11-03T{10 + h:02d}:{m:02d}:{s:02d}.000Z"
+        when = datetime(2026, 11, 3, 10, tzinfo=UTC) + timedelta(seconds=self._t)
+        return when.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
     def _base(self, etype: str, **extra: Any) -> dict[str, Any]:
         return {
             "type": etype,
             "uuid": self._next(),
-            "sessionId": "sess-1",
+            "sessionId": self.session,
             "cwd": "/work/repo",
             "gitBranch": "main",
             "timestamp": self._ts(extra.pop("advance", 5.0)),
