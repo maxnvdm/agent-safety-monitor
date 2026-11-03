@@ -8,10 +8,19 @@ from __future__ import annotations
 
 # {model_id: (input_per_1k, output_per_1k)}
 RATES: dict[str, tuple[float, float]] = {
-    # Anthropic
-    "anthropic/claude-haiku-4-5": (0.00025, 0.00125),
+    # Anthropic (first-party API, per-1M rates divided by 1000; verified 2026-10)
+    "anthropic/claude-fable-5-1": (0.010, 0.050),
+    "anthropic/claude-opus-5-5": (0.004, 0.020),
+    "anthropic/claude-opus-5": (0.005, 0.025),
+    "anthropic/claude-opus-4-8": (0.005, 0.025),
+    "anthropic/claude-opus-4-7": (0.005, 0.025),
+    "anthropic/claude-sonnet-5-5": (0.002, 0.010),
+    "anthropic/claude-sonnet-5": (0.002, 0.010),
     "anthropic/claude-sonnet-4-6": (0.003, 0.015),
-    "anthropic/claude-opus-4-7": (0.015, 0.075),
+    # Haiku 5.5 is $0.50/$2.50 per 1M for prompts over 100K tokens; the flat rate
+    # below is the <=100K tier, which covers typical session transcripts.
+    "anthropic/claude-haiku-5-5": (0.0001, 0.0005),
+    "anthropic/claude-haiku-4-5": (0.001, 0.005),
     # OpenAI
     "openai/gpt-4o": (0.0025, 0.010),
     "openai/gpt-4o-mini": (0.00015, 0.0006),

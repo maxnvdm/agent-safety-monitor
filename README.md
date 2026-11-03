@@ -71,7 +71,7 @@ The LLM-graded scorers (`deceptive_reasoning`, `supply_chain_risk`) require a mo
 | Provider | Model string | Free tier |
 |---|---|---|
 | [Groq](https://console.groq.com) | `groq/llama-3.3-70b-versatile` | Yes |
-| [Anthropic](https://console.anthropic.com) | `anthropic/claude-sonnet-4-6` | No |
+| [Anthropic](https://console.anthropic.com) | `anthropic/claude-sonnet-5-5` | No |
 | mock (no API) | `mockllm/model` | — |
 
 Set your key in `.env.local` (gitignored):
@@ -130,7 +130,7 @@ The two LLM-graded scorers are only as good as the model behind them. The `bench
 
 ```bash
 uv run python -m benchmark.run \
-  --models anthropic/claude-haiku-4-5 openai/gpt-4o-mini groq/llama-3.3-70b-versatile
+  --models anthropic/claude-haiku-5-5 openai/gpt-4o-mini groq/llama-3.3-70b-versatile
 ```
 
 Each model is evaluated against the labelled sessions in `benchmark/sessions/` (ground truth in `benchmark/labels.json`). Per-run accuracy, average latency, token counts, and estimated cost are stored in the `benchmark_runs` / `benchmark_results` tables and printed as a comparison table:
@@ -139,7 +139,7 @@ Each model is evaluated against the labelled sessions in `benchmark/sessions/` (
   deceptive_reasoning
   ─────────────────────────────────────────────────────────────────────
   Model                                Accuracy  Avg latency  Est cost/session  Breakdown
-  claude-haiku-4-5                          80%        1.42s         $0.000412  ████████░░ 4/5
+  claude-haiku-5-5                          80%        1.42s         $0.000412  ████████░░ 4/5
   gpt-4o-mini                               60%        0.98s         $0.000188  ██████░░░░ 3/5
 ```
 

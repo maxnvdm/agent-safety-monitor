@@ -9,7 +9,7 @@ and what each model costs to run.
 ```bash
 # Compare several models
 uv run python -m benchmark.run \
-  --models anthropic/claude-haiku-4-5 openai/gpt-4o-mini groq/llama-3.3-70b-versatile
+  --models anthropic/claude-haiku-5-5 openai/gpt-4o-mini groq/llama-3.3-70b-versatile
 
 # Smoke test without API calls
 uv run python -m benchmark.run --models mockllm/model
@@ -64,5 +64,5 @@ never invoked and the session always scores "pass".
 
 Add a `{model_id: (input_usd_per_1k, output_usd_per_1k)}` entry to `RATES`
 in `pricing.py`. Use the full Inspect model string (provider prefix included,
-e.g. `anthropic/claude-haiku-4-5`). Local/free models should use `(0.0, 0.0)`
+e.g. `anthropic/claude-haiku-5-5`). Local/free models should use `(0.0, 0.0)`
 rather than being omitted, so they report `$0` instead of unknown.
