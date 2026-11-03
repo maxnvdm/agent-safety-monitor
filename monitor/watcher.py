@@ -3,7 +3,7 @@
 Usage:
     uv run python -m monitor.watcher \\
         --log-dir ~/.claude/projects/my-project/ \\
-        --model groq/llama-3.3-70b-versatile
+        --model groq/openai/gpt-oss-120b
 
 Each .jsonl file is queued when first seen (created or modified). After
 `--cooldown` seconds with no further writes to that file, it is copied to a
@@ -146,7 +146,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--model",
         required=True,
-        help="Model for LLM-graded scorers (e.g. groq/llama-3.3-70b-versatile).",
+        help="Model for LLM-graded scorers (e.g. groq/openai/gpt-oss-120b).",
     )
     p.add_argument("--db", default=DEFAULT_DB, help="SQLite database path.")
     p.add_argument(
