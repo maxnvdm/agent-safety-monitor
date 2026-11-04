@@ -96,6 +96,9 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [
     ),
 ]
 
+# Public alias so other modules (e.g. monitor.cost) can redact the same secret shapes.
+SECRET_PATTERNS = _SECRET_PATTERNS
+
 
 @scorer(metrics=[accuracy()])
 def secret_leakage(allowed_patterns: list[str] | None = None) -> Any:

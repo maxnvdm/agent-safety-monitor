@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from api.routes import results, sessions
+from api.routes import cost, results, sessions
 
 app = FastAPI(title="Coding Agent Safety Monitor")
 
@@ -18,6 +18,7 @@ app.add_middleware(
 
 app.include_router(sessions.router, prefix="/sessions", tags=["sessions"])
 app.include_router(results.router, prefix="/results", tags=["results"])
+app.include_router(cost.router, prefix="/cost", tags=["cost"])
 
 
 @app.get("/healthz")

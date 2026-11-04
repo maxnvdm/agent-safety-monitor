@@ -35,6 +35,11 @@ uv run python -m benchmark.run --models mockllm/model
 # Re-print latest stored benchmark results without re-running evals
 uv run python -m benchmark.run --report-only
 
+# Cost analysis of Claude Code sessions (where do tokens/dollars go; waste findings)
+uv run python -m monitor.cost report ~/.claude/projects/<project>/ --group-by action
+# Refresh the vendored price table from LiteLLM
+uv run python scripts/update_model_prices.py
+
 # Start the API (default db: monitor.db, override with MONITOR_DB env var)
 uv run uvicorn api.main:app --reload --port 8070
 
@@ -74,6 +79,8 @@ The system is a pipeline: Claude Code JSONL logs → Inspect AI eval → SQLite 
 
 **`monitor/allowlist.py`** — Persistent allowlist (`allowlist.json`) of known-safe patterns, one entry-list per scorer. `add_entries` / `for_scorer` are the write/read API. `entries_from_match_metadata` extracts the allowlistable value from a result's `match_metadata` dict. Loaded by `tasks.py` at eval startup; written by the API PATCH endpoint when a failure is marked safe.
 
+**`monitor/cost/`** — cost analysis, independent of the Inspect eval pipeline (it reads the JSONL directly and writes `cost_*` tables to the same SQLite file). `pricing.py` (cache-aware rates from the vendored `model_prices.json`; `MONITOR_PRICES` overrides) → `parse.py` (one `ApiCall` per `message.id`, since Claude Code logs one event per content block each repeating `usage`; `promptId` is on user events only; skill text arrives as an `isMeta` user event whose `sourceToolUseID` is the `Skill` call) → `attribute.py` (token ledger: every dollar is owned by exactly one tool, skill or bucket; `SessionCosts.attributed_usd` must equal `total_usd`, which tests assert) → `findings.py` (waste detectors) → `store.py` (idempotent per-session ingest, queries) → `cli.py`/`report.py`; `actions.py` classifies tool calls (family/action, Bash by command). API routes live in `api/routes/cost.py` under `/cost`. `tests/cost_helpers.py` builds synthetic logs with exact token counts.
+
 **`benchmark/`** — measures LLM-scorer accuracy across models. `run.py` is the CLI (`--models`, `--report-only`); it evals each model against the 10 labelled sessions in `benchmark/sessions/` (ground truth in `labels.json`), compares predictions to labels, and persists per-run accuracy/latency/token/cost stats via `db.py` (`benchmark_runs`/`benchmark_results` tables, same SQLite file). `pricing.py` holds the per-1k-token rate table; `report.py` formats the comparison table.
 
 **`api/`** — FastAPI app with route groups: `GET /sessions/`, `GET /sessions/{id}`, `GET /sessions/{id}/transcript`, `GET /results/{id}`, `PATCH /sessions/{id}/results/{scorer_name}`. Runs on port 8070. DB path is read from the `MONITOR_DB` environment variable at module load time; tests reload the modules via `importlib.reload` to pick up a test-specific path.
@@ -85,6 +92,8 @@ The `PATCH /sessions/{id}/results/{scorer_name}` endpoint accepts `{"marked_safe
 **`tests/`** — pytest with `asyncio_mode = "auto"`. Fixtures in `tests/fixtures/` are real Claude Code JSONL files used by integration tests. `test_api.py` seeds a real SQLite DB via an actual Inspect eval run against fixtures, then hits the FastAPI app through `TestClient`.
 
 ## Key constraints
+
+- Cost attribution: totals are measured, per-item token splits are estimates (size-weighted). Never sum a tool's `own_usd` with its `roundtrip_usd`. When editing `monitor/cost/`, keep `attributed_usd == total_usd` true; scripted edits there must assert their replacements applied.
 
 - `inspect_eval` is synchronous and starts its own anyio event loop — never call it inside an `async` function or `asyncio.run()`.
 - The `MONITOR_DB` env var must be set before importing `api.routes.*` — tests use `monkeypatch.setenv` + `importlib.reload` for this reason.
